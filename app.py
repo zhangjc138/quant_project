@@ -1,0 +1,908 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+quant_project - Streamlit Web界面
+交互式Web界面，让用户无需命令行即可使用量化选股工具
+
+功能页面:
+- 📈 选股页面：输入股票代码/批量扫描、显示MA20角度、RSI、MACD、信号
+- 📊 回测页面：选择股票、时间范围、回测参数、显示收益曲线、统计指标
+- 🤖 ML预测页面：选择模型、显示预测结果、特征重要性
+- ⭐ 评分系统页面：综合评分、各维度得分、可视化
+"""
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+import plotly.express as px
+from datetime import datetime, timedelta
+import sys
+import os
+
+# 添加项目路径
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# 导入付费版模块
+try:
+    from scoring_system import ScoringSystem, ScoreResult, SignalLevel, print_score_result
+    PREMIUM_FEATURES = True
+except ImportError as e:
+    PREMIUM_FEATURES = False
+
+try:
+    from ml_selector import MLSelector
+    ML_AVAILABLE = True
+except ImportError:
+    ML_AVAILABLE = False
+
+try:
+    from smart_stock_picker import SmartStockPicker, A_SHARE_POOL
+    PICKER_AVAILABLE = True
+except ImportError:
+    PICKER_AVAILABLE = False
+
+# 尝试导入开源版模块
+try:
+    from stock_strategy import StockSelector, calculate_rsi, calculate_macd
+    OPEN_SOURCE_AVAILABLE = True
+except ImportError:
+    OPEN_SOURCE_AVAILABLE = False
+
+# 页面配置
+st.set_page_config(
+    page_title="quant_project - 量化选股工具",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# 自定义CSS样式
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 28px;
+        font-weight: bold;
+        color: #1f77b4;
+        margin-bottom: 20px;
+    }
+    .metric-card {
+        background-color: #f0f2f6;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 5px;
+    }
+    .buy-signal {
+        color: #28a745;
+        font-weight: bold;
+    }
+    .sell-signal {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    .hold-signal {
+        color: #ffc107;
+        font-weight: bold;
+    }
+    .stButton>button {
+        width: 100%;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+# ==================== 辅助函数 ====================
+
+@st.cache_data(ttl=3600)
+def generate_mock_data(symbol, days=200):
+    """生成模拟数据用于演示"""
+    np.random.seed(hash(symbol) % 2**32)
+    dates = pd.date_range(end=datetime.now(), periods=days, freq='D')
+    
+    # 基于股票代码生成不同的走势
+    base_price = 10 + (hash(symbol) % 100)
+    trend = (hash(symbol) % 20 - 10) * 0.001
+    close = base_price + np.cumsum(np.random.randn(days) * 2 + trend)
+    
+    df = pd.DataFrame({
+        'open': close - np.random.uniform(-0.5, 0.5, days),
+        'high': close + np.random.uniform(0, 2, days),
+        'low': close - np.random.uniform(0, 2, days),
+        'close': close,
+        'volume': np.random.randint(1000000, 10000000, days)
+    }, index=dates)
+    
+    return df
+
+
+@st.cache_data(ttl=3600)
+def calculate_indicators(df):
+    """计算技术指标"""
+    result = df.copy()
+    
+    # 均线
+    result['ma5'] = result['close'].rolling(5).mean()
+    result['ma10'] = result['close'].rolling(10).mean()
+    result['ma20'] = result['close'].rolling(20).mean()
+    result['ma60'] = result['close'].rolling(60).mean()
+    
+    # MA20角度
+    ma20 = result['ma20']
+    result['ma20_angle'] = np.arctan(
+        (ma20 - ma20.shift(1)) / (ma20.shift(1).replace(0, np.nan))
+    ) * 180 / np.pi
+    
+    # RSI
+    delta = result['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+    rs = gain / loss.replace(0, np.nan)
+    result['rsi'] = 100 - (100 / (1 + rs))
+    
+    # MACD
+    ema12 = result['close'].ewm(span=12, adjust=False).mean()
+    ema26 = result['close'].ewm(span=26, adjust=False).mean()
+    result['macd_diff'] = ema12 - ema26
+    result['macd_dea'] = result['macd_diff'].ewm(span=9, adjust=False).mean()
+    result['macd_hist'] = result['macd_diff'] - result['macd_dea']
+    
+    # 动量
+    result['momentum_5'] = result['close'].pct_change(5)
+    result['momentum_10'] = result['close'].pct_change(10)
+    
+    # 成交量
+    result['volume_ma5'] = result['volume'].rolling(5).mean()
+    result['volume_ratio'] = result['volume'] / result['volume_ma5']
+    
+    return result
+
+
+def get_signal_from_indicators(row):
+    """根据指标生成信号"""
+    ma20_angle = row.get('ma20_angle', 0)
+    rsi = row.get('rsi', 50)
+    macd_diff = row.get('macd_diff', 0)
+    macd_dea = row.get('macd_dea', 0)
+    
+    if pd.isna(ma20_angle) or pd.isna(rsi):
+        return "HOLD", "数据不足"
+    
+    # MA20角度判断
+    if ma20_angle > 3:
+        trend_signal = "BUY"
+    elif ma20_angle < 0:
+        trend_signal = "SELL"
+    else:
+        trend_signal = "HOLD"
+    
+    # RSI判断
+    if rsi > 70:
+        rsi_signal = "超买"
+    elif rsi < 30:
+        rsi_signal = "超卖"
+    else:
+        rsi_signal = "中性"
+    
+    # MACD判断
+    if macd_diff > macd_dea:
+        macd_signal = "金叉"
+    elif macd_diff < macd_dea:
+        macd_signal = "死叉"
+    else:
+        macd_signal = "中性"
+    
+    # 综合信号
+    if trend_signal == "BUY" and macd_signal == "金叉":
+        signal = "🟢 强力买入"
+    elif trend_signal == "BUY":
+        signal = "🟢 买入"
+    elif trend_signal == "SELL":
+        signal = "🔴 卖出"
+    else:
+        signal = "🟡 持有"
+    
+    return signal, f"{trend_signal} | {rsi_signal} | {macd_signal}"
+
+
+def plot_candlestick_with_indicators(df, symbol="股票"):
+    """绘制K线图和指标"""
+    if df is None or len(df) < 20:
+        return None
+    
+    # 创建子图
+    fig = go.Figure()
+    
+    # K线图
+    fig.add_trace(go.Candlestick(
+        x=df.index,
+        open=df['open'],
+        high=df['high'],
+        low=df['low'],
+        close=df['close'],
+        name='K线',
+        increasing_line_color='#26a69a',
+        decreasing_line_color='#ef5350'
+    ))
+    
+    # MA均线
+    if 'ma20' in df.columns and df['ma20'].notna().any():
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['ma20'],
+            mode='lines', name='MA20',
+            line=dict(color='#2196F3', width=1.5)
+        ))
+    
+    if 'ma60' in df.columns and df['ma60'].notna().any():
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['ma60'],
+            mode='lines', name='MA60',
+            line=dict(color='#FF9800', width=1.5)
+        ))
+    
+    # 布局设置
+    fig.update_layout(
+        title=f'{symbol} K线图',
+        xaxis_title='日期',
+        yaxis_title='价格',
+        template='plotly_dark',
+        height=500,
+        xaxis_rangeslider_visible=False,
+        hovermode='x unified'
+    )
+    
+    return fig
+
+
+# ==================== 页面函数 ====================
+
+def show_stock_selector():
+    """选股页面"""
+    st.markdown('<p class="main-header">📈 智能选股</p>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("选股参数")
+        
+        input_method = st.radio("输入方式", ["单只股票", "批量扫描"])
+        
+        if input_method == "单只股票":
+            symbol = st.text_input("股票代码", value="600519", help="如: 600519 (贵州茅台)")
+            symbols = [symbol]
+        else:
+            # 使用预设股票池
+            stock_pool = list(A_SHARE_POOL.items()) if PICKER_AVAILABLE else [
+                ('600519', '贵州茅台'), ('600036', '招商银行'), ('000858', '五粮液'),
+                ('000651', '格力电器'), ('600030', '中信证券')
+            ]
+            selected = st.multiselect(
+                "选择股票",
+                options=[s[0] for s in stock_pool],
+                default=[s[0] for s in stock_pool[:5]],
+                format_func=lambda x: f"{x} - {dict(stock_pool).get(x, '')}"
+            )
+            symbols = selected if selected else [stock_pool[0][0]]
+        
+        # 筛选参数
+        with st.expander("基本面筛选 (付费版)", expanded=False):
+            if PREMIUM_FEATURES:
+                pe_min = st.number_input("PE最小", value=0)
+                pe_max = st.number_input("PE最大", value=50)
+                min_score = st.slider("最低评分", 0, 100, 50)
+            else:
+                st.info("💡 付费版功能：基本面筛选需要付费版模块")
+        
+        scan_button = st.button("🔍 开始选股", type="primary")
+    
+    with col2:
+        if scan_button or input_method == "单只股票":
+            results = []
+            
+            for sym in symbols:
+                # 生成/加载数据
+                df = generate_mock_data(sym)
+                df = calculate_indicators(df)
+                
+                if len(df) >= 20:
+                    latest = df.iloc[-1]
+                    signal, desc = get_signal_from_indicators(latest)
+                    
+                    # 计算简单评分
+                    ma20_angle = latest.get('ma20_angle', 0)
+                    rsi = latest.get('rsi', 50)
+                    momentum = latest.get('momentum_5', 0) * 100
+                    
+                    # 简单评分 (0-100)
+                    score = 50
+                    if ma20_angle > 3:
+                        score += min(ma20_angle * 3, 20)
+                    if 30 < rsi < 70:
+                        score += 10
+                    if momentum > 0:
+                        score += min(momentum * 2, 20)
+                    score = min(score, 100)
+                    
+                    name = dict(A_SHARE_POOL).get(sym, sym) if PICKER_AVAILABLE else sym
+                    results.append({
+                        '代码': sym,
+                        '名称': name,
+                        '评分': round(score, 1),
+                        'MA20角度': round(ma20_angle, 2) if pd.notna(ma20_angle) else 0,
+                        'RSI': round(rsi, 1) if pd.notna(rsi) else 50,
+                        '5日涨幅': f"{momentum:.2f}%",
+                        '信号': signal,
+                        '详情': desc,
+                        '数据': df
+                    })
+            
+            # 显示K线图
+            if input_method == "单只股票" and symbols:
+                sym = symbols[0]
+                name = dict(A_SHARE_POOL).get(sym, sym) if PICKER_AVAILABLE else sym
+                df = results[0]['数据'] if results else generate_mock_data(sym)
+                fig = plot_candlestick_with_indicators(df, f"{sym} - {name}")
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            # 显示结果表格
+            if results:
+                st.subheader("选股结果")
+                
+                # 格式化显示
+                display_df = pd.DataFrame([{
+                    '代码': r['代码'],
+                    '名称': r['名称'],
+                    '评分': r['评分'],
+                    'MA20角度': f"{r['MA20角度']:.2f}°",
+                    'RSI': r['RSI'],
+                    '5日涨幅': r['5日涨幅'],
+                    '信号': r['信号']
+                } for r in results])
+                
+                st.dataframe(
+                    display_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # 信号统计
+                signal_counts = display_df['信号'].value_counts()
+                st.write("📊 信号统计:", signal_counts.to_dict())
+
+
+def show_backtest():
+    """回测页面"""
+    st.markdown('<p class="main-header">📊 策略回测</p>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("回测参数")
+        
+        symbol = st.text_input("股票代码", value="600519")
+        
+        date_range = st.date_input(
+            "时间范围",
+            value=(datetime.now() - timedelta(days=365), datetime.now()),
+            help="选择回测的时间范围"
+        )
+        
+        if len(date_range) == 2:
+            start_date, end_date = date_range
+        else:
+            start_date = datetime.now() - timedelta(days=365)
+            end_date = datetime.now()
+        
+        # 回测参数
+        initial_capital = st.number_input("初始资金", value=100000, step=10000)
+        stop_loss = st.slider("止损比例", 0, 20, 5) / 100
+        take_profit = st.slider("止盈比例", 0, 50, 15) / 100
+        
+        st.subheader("策略选择")
+        use_ma20 = st.checkbox("MA20角度策略", value=True)
+        use_rsi = st.checkbox("RSI策略", value=True)
+        use_macd = st.checkbox("MACD策略", value=True)
+        
+        run_button = st.button("🚀 运行回测", type="primary")
+    
+    with col2:
+        if run_button:
+            # 生成模拟数据
+            df = generate_mock_data(symbol, days=1000)
+            df = calculate_indicators(df)
+            
+            # 筛选日期范围
+            df = df[(df.index >= pd.Timestamp(start_date)) & (df.index <= pd.Timestamp(end_date))]
+            
+            if len(df) < 50:
+                st.error("数据不足，无法进行回测")
+                return
+            
+            # 模拟回测逻辑
+            cash = initial_capital
+            position = 0
+            shares = 0
+            trades = []
+            equity_curve = []
+            
+            for i in range(1, len(df)):
+                row = df.iloc[i]
+                prev_row = df.iloc[i-1]
+                
+                # 买入信号
+                signal = []
+                if use_ma20:
+                    ma20_angle = row.get('ma20_angle', 0)
+                    if ma20_angle > 3:
+                        signal.append('MA20_BUY')
+                if use_rsi:
+                    rsi = row.get('rsi', 50)
+                    if rsi < 35:
+                        signal.append('RSI_BUY')
+                if use_macd:
+                    if row.get('macd_diff', 0) > row.get('macd_dea', 0) and \
+                       prev_row.get('macd_diff', 0) <= prev_row.get('macd_dea', 0):
+                        signal.append('MACD_BUY')
+                
+                # 卖出信号
+                sell_signal = []
+                if use_ma20:
+                    if row.get('ma20_angle', 0) < 0:
+                        sell_signal.append('MA20_SELL')
+                if use_rsi:
+                    if row.get('rsi', 50) > 70:
+                        sell_signal.append('RSI_SELL')
+                
+                # 交易逻辑
+                if 'BUY' in signal and position == 0:
+                    shares = int(cash / row['close'] * 0.8)
+                    cost = shares * row['close']
+                    cash -= cost
+                    position = 1
+                    trades.append({
+                        'date': df.index[i],
+                        'type': 'BUY',
+                        'price': row['close'],
+                        'shares': shares
+                    })
+                
+                elif 'SELL' in sell_signal and position == 1:
+                    cash += shares * row['close']
+                    trades.append({
+                        'date': df.index[i],
+                        'type': 'SELL',
+                        'price': row['close'],
+                        'shares': shares
+                    })
+                    shares = 0
+                    position = 0
+                
+                # 止损止盈
+                if position == 1 and len(trades) > 0:
+                    last_buy = trades[-1]
+                    pnl_pct = (row['close'] - last_buy['price']) / last_buy['price']
+                    if pnl_pct <= -stop_loss or pnl_pct >= take_profit:
+                        cash += shares * row['close']
+                        trades.append({
+                            'date': df.index[i],
+                            'type': 'SELL',
+                            'price': row['close'],
+                            'shares': shares
+                        })
+                        shares = 0
+                        position = 0
+                
+                equity = cash + shares * row['close']
+                equity_curve.append({
+                    'date': df.index[i],
+                    'equity': equity
+                })
+            
+            # 计算回测结果
+            final_value = cash + shares * df.iloc[-1]['close']
+            total_return = (final_value - initial_capital) / initial_capital * 100
+            
+            # 夏普比率
+            equity_df = pd.DataFrame(equity_curve)
+            if len(equity_df) > 1:
+                returns = equity_df['equity'].pct_change().dropna()
+                sharpe = returns.mean() / returns.std() * np.sqrt(252) if returns.std() > 0 else 0
+            else:
+                sharpe = 0
+            
+            # 最大回撤
+            equity_df['cummax'] = equity_df['equity'].cummax()
+            equity_df['drawdown'] = (equity_df['cummax'] - equity_df['equity']) / equity_df['cummax']
+            max_drawdown = equity_df['drawdown'].max() * 100
+            
+            # 胜率
+            buy_trades = [t for t in trades if t['type'] == 'BUY']
+            sell_trades = [t for t in trades if t['type'] == 'SELL']
+            wins = 0
+            for i in range(len(sell_trades)):
+                if i < len(buy_trades):
+                    buy_price = buy_trades[i]['price']
+                    sell_price = sell_trades[i]['price']
+                    if sell_price > buy_price:
+                        wins += 1
+            win_rate = wins / len(sell_trades) * 100 if sell_trades else 0
+            
+            # 显示指标
+            st.subheader("📊 回测结果")
+            
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("总收益率", f"{total_return:+.2f}%")
+            m2.metric("夏普比率", f"{sharpe:.2f}")
+            m3.metric("最大回撤", f"{max_drawdown:.2f}%")
+            m4.metric("交易次数", f"{len(trades)}")
+            
+            m5, m6, m7, m8 = st.columns(4)
+            m5.metric("最终资金", f"¥{final_value:,.0f}")
+            m6.metric("胜率", f"{win_rate:.1f}%")
+            m7.metric("买入次数", f"{len(buy_trades)}")
+            m8.metric("卖出次数", f"{len(sell_trades)}")
+            
+            # 收益曲线
+            equity_df = pd.DataFrame(equity_curve)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=equity_df['date'],
+                y=equity_df['equity'],
+                mode='lines',
+                name='资金曲线',
+                line=dict(color='#2196F3', width=2)
+            ))
+            
+            # 基准线
+            fig.add_hline(y=initial_capital, line_dash="dash", line_color="gray", 
+                         annotation_text="初始资金")
+            
+            fig.update_layout(
+                title='资金曲线',
+                xaxis_title='日期',
+                yaxis_title='资金',
+                template='plotly_dark',
+                height=400
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # 交易记录
+            if trades:
+                st.subheader("📝 交易记录")
+                trades_df = pd.DataFrame(trades)
+                trades_df['date'] = trades_df['date'].dt.strftime('%Y-%m-%d')
+                st.dataframe(trades_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("👈 设置参数后点击'运行回测'开始分析")
+
+
+def show_ml_prediction():
+    """ML预测页面"""
+    st.markdown('<p class="main-header">🤖 ML预测</p>', unsafe_allow_html=True)
+    
+    if not ML_AVAILABLE:
+        st.warning("⚠️ ML模块不可用，请安装scikit-learn: pip install scikit-learn")
+        st.info("💡 付费版专属功能：需要付费版许可证")
+        return
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("ML参数")
+        
+        symbol = st.text_input("股票代码", value="600519")
+        
+        model_type = st.selectbox(
+            "模型类型",
+            ['random_forest', 'logistic'],
+            format_func=lambda x: '随机森林' if x == 'random_forest' else '逻辑回归'
+        )
+        
+        train_button = st.button("📊 训练模型", type="primary")
+        predict_button = st.button("🔮 预测", type="primary")
+        
+        st.info("""
+        **特征说明:**
+        - MA20角度: 趋势强度
+        - RSI: 相对强弱
+        - MACD差值: 趋势变化
+        - 成交量变化: 市场活跃度
+        - 价格动量: 短期走势
+        - 波动率: 风险水平
+        """)
+    
+    with col2:
+        if train_button:
+            # 生成训练数据
+            df = generate_mock_data(symbol, days=500)
+            
+            try:
+                # 训练模型
+                selector = MLSelector(model_type=model_type)
+                result = selector.train(df, verbose=True)
+                
+                st.success("✅ 模型训练完成!")
+                
+                # 特征重要性
+                if result.get('feature_weights'):
+                    st.subheader("📊 特征重要性")
+                    importance_df = pd.DataFrame([
+                        {'特征': k, '重要性': v} 
+                        for k, v in result['feature_weights'].items()
+                    ]).sort_values('重要性', ascending=True)
+                    
+                    fig = px.barh(
+                        importance_df, 
+                        x='重要性', 
+                        y='特征',
+                        title='特征重要性',
+                        template='plotly_dark'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+            except Exception as e:
+                st.error(f"训练失败: {e}")
+        
+        if predict_button:
+            df = generate_mock_data(symbol, days=200)
+            
+            try:
+                selector = MLSelector(model_type=model_type)
+                selector.train(df, verbose=False)
+                
+                pred = selector.predict(df)
+                
+                st.subheader("🔮 预测结果")
+                
+                # 预测信号
+                signal = pred['signal']
+                confidence = pred['confidence']
+                up_prob = pred['up_probability']
+                down_prob = pred['down_probability']
+                
+                # 信号卡片
+                c1, c2, c3 = st.columns(3)
+                c1.metric("预测信号", signal)
+                c2.metric("上涨概率", f"{up_prob:.1%}")
+                c3.metric("置信度", f"{confidence:.1%}")
+                
+                # 概率条
+                st.subheader("📈 概率分布")
+                prob_df = pd.DataFrame({
+                    '方向': ['上涨', '下跌'],
+                    '概率': [up_prob, down_prob]
+                })
+                fig = px.bar(
+                    prob_df,
+                    x='方向',
+                    y='概率',
+                    color='方向',
+                    color_discrete_map={'上涨': '#4CAF50', '下跌': '#F44336'},
+                    title='涨跌概率预测',
+                    template='plotly_dark'
+                )
+                fig.update_yaxes(range=[0, 1])
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # 特征值
+                st.subheader("📊 当前特征值")
+                features = pred.get('features', {})
+                if features:
+                    feat_df = pd.DataFrame([
+                        {'特征': k, '值': f"{v:.4f}"} 
+                        for k, v in features.items()
+                    ])
+                    st.dataframe(feat_df, use_container_width=True, hide_index=True)
+                
+            except Exception as e:
+                st.error(f"预测失败: {e}")
+
+
+def show_scoring():
+    """评分系统页面"""
+    st.markdown('<p class="main-header">⭐ 综合评分系统</p>', unsafe_allow_html=True)
+    
+    if not PREMIUM_FEATURES:
+        st.warning("⚠️ 评分系统模块不可用")
+        st.info("💡 付费版专属功能：需要付费版许可证")
+        return
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("评分参数")
+        
+        symbol = st.text_input("股票代码", value="600519")
+        
+        st.info("""
+        **评分维度:**
+        - 趋势强度 (25%): MA角度、均线位置
+        - 动量 (25%): 各周期涨幅
+        - 波动率 (15%): 稳定性评估
+        - RSI位置 (20%): RSI水平和趋势
+        - MACD状态 (15%): 金叉死叉
+        """)
+        
+        score_button = st.button("📊 计算评分", type="primary")
+    
+    with col2:
+        if score_button:
+            # 生成数据
+            df = generate_mock_data(symbol, days=200)
+            
+            try:
+                # 使用评分系统
+                scoring = ScoringSystem()
+                result = scoring.calculate(df)
+                
+                # 显示综合评分
+                st.subheader("🎯 综合评分")
+                
+                score = result.total_score
+                signal = result.signal.value
+                
+                # 评分大卡片
+                c1, c2 = st.columns(2)
+                
+                # 评分环形图
+                fig = go.Figure(go.Pie(
+                    values=[score, 100-score],
+                    hole=0.7,
+                    marker=dict(colors=['#4CAF50', '#E0E0E0']),
+                    showlegend=False
+                ))
+                fig.add_annotation(
+                    text=f"{score:.0f}",
+                    font=dict(size=48, color='#4CAF50'),
+                    showarrow=False,
+                    x=0.5, y=0.5
+                )
+                fig.update_layout(
+                    title=f'综合评分: {signal}',
+                    height=200,
+                    margin=dict(l=20, r=20, t=50, b=20)
+                )
+                c1.plotly_chart(fig, use_container_width=True)
+                
+                # 信号指示
+                c2.markdown(f"""
+                <div style="text-align: center; padding: 40px;">
+                    <h1 style="color: {'#28a745' if score >= 60 else '#ffc107' if score >= 40 else '#dc3545'};">
+                        {signal}
+                    </h1>
+                    <p>{result.recommendation}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # 各维度分数
+                st.subheader("📊 各维度评分")
+                
+                scores = result.scores
+                
+                m1, m2, m3, m4, m5 = st.columns(5)
+                m1.metric("趋势强度", f"{scores.get('trend', 0):.1f}/25")
+                m2.metric("动量", f"{scores.get('momentum', 0):.1f}/25")
+                m3.metric("波动率", f"{scores.get('volatility', 0):.1f}/15")
+                m4.metric("RSI位置", f"{scores.get('rsi', 0):.1f}/20")
+                m5.metric("MACD状态", f"{scores.get('macd', 0):.1f}/15")
+                
+                # 雷达图
+                st.subheader("🎯 评分雷达图")
+                
+                categories = ['趋势', '动量', '波动率', 'RSI', 'MACD']
+                values = [
+                    scores.get('trend', 0),
+                    scores.get('momentum', 0),
+                    scores.get('volatility', 0),
+                    scores.get('rsi', 0),
+                    scores.get('macd', 0)
+                ]
+                max_vals = [25, 25, 15, 20, 15]
+                normalized = [v/m*100 if m > 0 else 0 for v, m in zip(values, max_vals)]
+                
+                fig_radar = go.Figure()
+                fig_radar.add_trace(go.Scatterpolar(
+                    r=normalized + [normalized[0]],
+                    theta=categories + [categories[0]],
+                    fill='toself',
+                    name='评分',
+                    line_color='#2196F3'
+                ))
+                fig_radar.update_layout(
+                    polar=dict(
+                        radialaxis=dict(visible=True, range=[0, 100])
+                    ),
+                    showlegend=False,
+                    height=350
+                )
+                st.plotly_chart(fig_radar, use_container_width=True)
+                
+                # 关键指标
+                st.subheader("📌 关键指标")
+                details = result.details
+                
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("MA20角度", f"{details.get('ma20_angle', 0):.2f}°")
+                m2.metric("RSI(14)", f"{details.get('rsi', 50):.1f}")
+                m3.metric("5日涨幅", f"{details.get('momentum_5', 0):.2%}")
+                m4.metric("成交量比", f"{details.get('volume_ratio', 1):.2f}")
+                
+                # K线图
+                st.subheader("📈 K线图")
+                fig = plot_candlestick_with_indicators(df, symbol)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"评分失败: {e}")
+
+
+# ==================== 侧边栏 ====================
+
+def show_sidebar():
+    """侧边栏导航"""
+    st.sidebar.title("📈 quant_project")
+    st.sidebar.markdown("---")
+    
+    # 功能导航
+    page = st.sidebar.radio(
+        "功能导航",
+        ["选股", "回测", "ML预测", "评分系统"]
+    )
+    
+    st.sidebar.markdown("---")
+    
+    # 系统信息
+    st.sidebar.subheader("ℹ️ 系统信息")
+    
+    info = {
+        "版本": "v1.2.0",
+        "状态": "✅ 正常运行",
+        "数据": "📊 模拟数据"
+    }
+    
+    for k, v in info.items():
+        st.sidebar.text(f"{k}: {v}")
+    
+    # 快捷链接
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔗 快捷链接")
+    
+    st.sidebar.markdown("""
+    - [项目首页](https://github.com/your-repo)
+    - [使用文档](#)
+    - [反馈建议](#)
+    """)
+    
+    return page
+
+
+# ==================== 主函数 ====================
+
+def main():
+    """主函数"""
+    # 侧边栏导航
+    page = show_sidebar()
+    
+    # 根据导航显示对应页面
+    if page == "选股":
+        show_stock_selector()
+    elif page == "回测":
+        show_backtest()
+    elif page == "ML预测":
+        show_ml_prediction()
+    elif page == "评分系统":
+        show_scoring()
+    
+    # 页脚
+    st.markdown("---")
+    st.markdown(
+        "<div style='text-align: center; color: gray; font-size: 12px;'>"
+        "quant_project v1.2.0 | 仅供学习和研究使用，不构成投资建议"
+        "</div>",
+        unsafe_allow_html=True
+    )
+
+
+if __name__ == '__main__':
+    main()

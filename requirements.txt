@@ -8,3 +8,7 @@ numpy>=1.26.0
 # 付费版专属依赖
 scikit-learn>=1.3.0
 scipy>=1.11.0
+
+# Web界面依赖
+streamlit>=1.28.0
+plotly>=5.18.0
