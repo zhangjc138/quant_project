@@ -145,7 +145,7 @@ print(f"夏普比率: {result.sharpe_ratio:.2f}")
 
 ## 📧 联系方式
 
-- 📧 Email: zhangjc138@example.com
+- 📧 Email: 6315489@qq.com
 - 🐛 Issue: [GitHub Issues](https://github.com/zhangjc138/quant_project/issues)
 - 💬 讨论: [GitHub Discussions](https://github.com/zhangjc138/quant_project/discussions)
 
