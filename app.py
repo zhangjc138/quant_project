@@ -1529,37 +1529,74 @@ def show_dashboard():
     """仪表盘页面 - 总览"""
     st.markdown('<p class="main-header">📊 仪表盘</p>', unsafe_allow_html=True)
     
+    # 获取自选股信号
+    watchlist = load_watchlist()
+    all_stocks = []
+    for group, stocks in watchlist.items():
+        all_stocks.extend([s['code'] for s in stocks])
+    
+    buy_count = 0
+    sell_count = 0
+    total_score = 0
+    
+    # 检测自选股信号
+    with st.spinner("正在检测自选股信号..."):
+        for sym in all_stocks[:10]:  # 最多检测10只
+            df = get_stock_data(sym, days=100)
+            if df is not None and len(df) >= 20:
+                df = calculate_indicators(df)
+                latest = df.iloc[-1]
+                signal, _ = get_signal_from_indicators(latest)
+                
+                if "买入" in signal:
+                    buy_count += 1
+                elif "卖出" in signal:
+                    sell_count += 1
+                
+                # 计算评分
+                ma20_angle = latest.get('ma20_angle', 0)
+                rsi = latest.get('rsi', 50)
+                score = 50
+                if pd.notna(ma20_angle) and ma20_angle > 3:
+                    score += min(ma20_angle * 3, 20)
+                if 30 < rsi < 70:
+                    score += 10
+                score = min(score, 100)
+                total_score += score
+    
+    avg_score = total_score / max(len(all_stocks[:10]), 1)
+    
     # 快捷统计卡片
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.markdown("""
+        st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-value" style="color: #22c55e;">0</div>
+            <div class="metric-value" style="color: #22c55e;">{buy_count}</div>
             <div class="metric-label">今日买入信号</div>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
-        st.markdown("""
+        st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-value" style="color: #ef4444;">0</div>
+            <div class="metric-value" style="color: #ef4444;">{sell_count}</div>
             <div class="metric-label">今日卖出信号</div>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
-        st.markdown("""
+        st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-value" style="color: #6366f1;">5</div>
+            <div class="metric-value" style="color: #6366f1;">{len(all_stocks)}</div>
             <div class="metric-label">自选股数量</div>
         </div>
         """, unsafe_allow_html=True)
     
     with col4:
-        st.markdown("""
+        st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-value" style="color: #f59e0b;">72.5</div>
+            <div class="metric-value" style="color: #f59e0b;">{avg_score:.1f}</div>
             <div class="metric-label">综合评分</div>
         </div>
         """, unsafe_allow_html=True)
