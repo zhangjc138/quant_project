@@ -1053,10 +1053,10 @@ def show_ml_prediction():
                 st.subheader("🔮 预测结果")
                 
                 # 预测信号
-                signal = pred['signal']
-                confidence = pred['confidence']
-                up_prob = pred['up_probability']
-                down_prob = pred['down_probability']
+                signal = pred.signal
+                confidence = pred.confidence
+                up_prob = pred.up_probability
+                down_prob = pred.down_probability
                 
                 # 信号卡片
                 c1, c2, c3 = st.columns(3)
