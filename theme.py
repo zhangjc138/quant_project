@@ -121,6 +121,26 @@ def apply_custom_css():
         border: 1px solid #475569;
     }
     
+    /* 展开框内部文字更亮 */
+    [data-testid="stExpander"] label,
+    [data-testid="stExpander"] span,
+    [data-testid="stExpander"] p {
+        color: #f8fafc !important;
+    }
+    
+    /* 展开框内的下拉框 */
+    [data-testid="stExpander"] [data-baseweb="select"] > div {
+        background-color: #1e293b !important;
+        color: #f8fafc !important;
+        border-color: #475569 !important;
+    }
+    
+    /* 展开框内的输入框 */
+    [data-testid="stExpander"] input {
+        background-color: #1e293b !important;
+        color: #f8fafc !important;
+    }
+    
     /* 输入框样式 */
     .stTextInput > div > div > input {
         background-color: #1e293b;
