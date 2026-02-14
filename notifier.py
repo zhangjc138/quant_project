@@ -37,6 +37,7 @@ class NotificationManager:
         self.config = config or {}
         self.email_notifier = EmailNotifier(self.config.get('email', {}))
         self.feishu_notifier = FeishuNotifier(self.config.get('feishu', {}))
+        self.wechat_notifier = WeChatNotifier(self.config.get('wechat', {}))
         self.rate_limiter = RateLimiter(
             max_per_minute=self.config.get('rate_limit', {}).get('max_per_minute', 3),
             max_per_hour=self.config.get('rate_limit', {}).get('max_per_hour', 20),
@@ -118,6 +119,23 @@ class NotificationManager:
             if feishu_result.get('success'):
                 logger.info(f"✅ 飞书推送成功: {symbol} {signal}")
         
+        # 微信推送
+        if self.wechat_notifier.is_configured():
+            wechat_result = self.wechat_notifier.send_signal(
+                symbol=symbol,
+                name=name,
+                signal=signal,
+                price=price,
+                change_pct=change_pct,
+                ma20_angle=ma20_angle,
+                rsi=rsi,
+                macd_signal=macd_signal,
+                **kwargs
+            )
+            results['wechat'] = wechat_result['success']
+            if wechat_result.get('success'):
+                logger.info(f"✅ 微信推送成功: {symbol} {signal}")
+        
         return results
     
     def send_daily_report(
@@ -157,6 +175,15 @@ class NotificationManager:
                 signal="REPORT"
             )
             results['feishu'] = feishu_result['success']
+        
+        # 微信推送
+        if self.wechat_notifier.is_configured():
+            wechat_content = self._format_daily_content(buy_signals, sell_signals, summary)
+            wechat_result = self.wechat_notifier.send_text(
+                title="📊 每日选股信号报告",
+                content=wechat_content
+            )
+            results['wechat'] = wechat_result['success']
         
         return results
     
@@ -578,6 +605,224 @@ class EmailNotifier:
         except Exception as e:
             logger.error(f"❌ 邮件发送异常: {e}")
             return False
+
+
+class WeChatNotifier:
+    """微信推送通知器（支持 Server酱/酷推）"""
+    
+    # Server酱 API 地址
+    SERVER_CHAN_URL = "https://sc.ftqq.com/"
+    
+    # 酷推 API 地址
+    COOL_PUSH_URL = "https://push.xuthus.cc/"
+    
+    def __init__(self, config: Optional[Dict] = None):
+        """
+        初始化微信推送器
+        
+        Args:
+            config: 配置字典
+                - method: 推送方式 ('serverchan', 'coolpush')
+                - key: 推送密钥 (Server酱的 SCKEY 或 酷推的 Skey)
+                - send_key: 酷推的发送密钥（可选）
+        """
+        self.config = config or {}
+        self.method = self.config.get('method', 'serverchan')
+        self.key = self.config.get('key', '')
+        self.send_key = self.config.get('send_key', '')
+    
+    def is_configured(self) -> bool:
+        """检查是否已配置"""
+        return bool(self.key)
+    
+    def send_signal(
+        self,
+        symbol: str,
+        name: str,
+        signal: str,
+        price: float,
+        change_pct: float,
+        ma20_angle: float,
+        rsi: float,
+        macd_signal: str,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        发送股票信号微信推送
+        
+        Args:
+            symbol: 股票代码
+            name: 股票名称
+            signal: 信号类型 (BUY/SELL/HOLD)
+            price: 当前价格
+            change_pct: 涨跌幅
+            ma20_angle: MA20角度
+            rsi: RSI值
+            macd_signal: MACD信号
+            **kwargs: 其他扩展参数
+            
+        Returns:
+            Dict: 发送结果
+        """
+        if not self.is_configured():
+            return {'success': False, 'error': '微信推送未配置'}
+        
+        # 格式化消息
+        emoji = "🟢" if signal == "BUY" else "🔴" if signal == "SELL" else "🟡"
+        title = f"{emoji} {signal}信号 - {name} ({symbol})"
+        content = self._format_signal_content(
+            symbol, name, signal, price, change_pct, ma20_angle, rsi, macd_signal, **kwargs
+        )
+        
+        return self._send(title, content)
+    
+    def send_text(self, title: str, content: str) -> Dict[str, Any]:
+        """
+        发送文本消息
+        
+        Args:
+            title: 标题
+            content: 内容
+            
+        Returns:
+            Dict: 发送结果
+        """
+        if not self.is_configured():
+            return {'success': False, 'error': '微信推送未配置'}
+        
+        return self._send(title, content)
+    
+    def _format_signal_content(
+        self,
+        symbol: str,
+        name: str,
+        signal: str,
+        price: float,
+        change_pct: float,
+        ma20_angle: float,
+        rsi: float,
+        macd_signal: str,
+        **kwargs
+    ) -> str:
+        """格式化信号消息内容"""
+        return f"""**{name}** ({symbol})
+💰 价格: {price:.2f} ({change_pct:+.2f}%)
+
+📊 技术指标:
+• MA20角度: **{ma20_angle:.2f}°**
+• RSI: **{rsi:.1f}** ({'超买' if rsi >= 70 else '超卖' if rsi <= 30 else '中性'})
+• MACD: **{macd_signal}**
+
+⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+---
+*来自 quant_project*"""
+    
+    def _send(self, title: str, content: str) -> Dict[str, Any]:
+        """
+        发送消息（内部方法）
+        
+        Args:
+            title: 标题
+            content: 内容
+            
+        Returns:
+            Dict: 发送结果
+        """
+        try:
+            if self.method == 'serverchan':
+                return self._send_serverchan(title, content)
+            elif self.method == 'coolpush':
+                return self._send_coolpush(title, content)
+            else:
+                return {'success': False, 'error': f'不支持的推送方式: {self.method}'}
+        except Exception as e:
+            logger.error(f"❌ 微信推送失败: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def _send_serverchan(self, title: str, content: str) -> Dict[str, Any]:
+        """
+        通过 Server酱 发送消息
+        
+        Args:
+            title: 标题
+            content: 内容
+            
+        Returns:
+            Dict: 发送结果
+        """
+        url = f"{self.SERVER_CHAN_URL}{self.key}.send"
+        data = {
+            'text': title,
+            'desp': content
+        }
+        
+        try:
+            req = urllib.request.Request(
+                url,
+                data=urllib.parse.urlencode(data).encode('utf-8')
+            )
+            
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read().decode('utf-8'))
+                
+                if result.get('errno') == 0:
+                    return {'success': True}
+                else:
+                    error_msg = result.get('errmsg', 'Unknown error')
+                    logger.error(f"❌ Server酱推送失败: {error_msg}")
+                    return {'success': False, 'error': error_msg}
+                    
+        except urllib.error.HTTPError as e:
+            logger.error(f"❌ Server酱 HTTP错误: {e}")
+            return {'success': False, 'error': f'HTTP Error: {e.code}'}
+        except Exception as e:
+            logger.error(f"❌ Server酱推送异常: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def _send_coolpush(self, title: str, content: str) -> Dict[str, Any]:
+        """
+        通过 酷推 发送消息
+        
+        Args:
+            title: 标题
+            content: 内容
+            
+        Returns:
+            Dict: 发送结果
+        """
+        url = f"{self.COOL_PUSH_URL}{self.key}/send"
+        data = {
+            't': title,
+            'c': content
+        }
+        
+        # 如果有 send_key，添加到 URL
+        if self.send_key:
+            url = f"{url}/{self.send_key}"
+        
+        try:
+            req = urllib.request.Request(
+                url,
+                data=urllib.parse.urlencode(data).encode('utf-8')
+            )
+            
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read().decode('utf-8'))
+                
+                if result.get('code') == 200:
+                    return {'success': True}
+                else:
+                    error_msg = result.get('msg', 'Unknown error')
+                    logger.error(f"❌ 酷推推送失败: {error_msg}")
+                    return {'success': False, 'error': error_msg}
+                    
+        except urllib.error.HTTPError as e:
+            logger.error(f"❌ 酷推 HTTP错误: {e}")
+            return {'success': False, 'error': f'HTTP Error: {e.code}'}
+        except Exception as e:
+            logger.error(f"❌ 酷推推送异常: {e}")
+            return {'success': False, 'error': str(e)}
 
 
 class FeishuNotifier:

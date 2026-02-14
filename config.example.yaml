@@ -40,6 +40,23 @@ feishu:
   mention_users:
     - "ou_xxxxxxxxxxxxx"
 
+# ==================== 微信推送配置 ====================
+wechat:
+  # 推送方式: serverchan (Server酱) 或 coolpush (酷推)
+  method: "serverchan"
+  
+  # Server酱配置:
+  # 1. 访问 https://sc.ftqq.com/ 注册账号
+  # 2. 点击"发送消息"获取 SCKEY
+  # 3. 将 SCKEY 填入下方 key
+  key: "your_serverchan_sckey"
+  
+  # 酷推配置 (可选，使用酷推时填入):
+  # 1. 访问 https://push.xuthus.cc/ 注册账号
+  # 2. 创建机器人获取 Skey
+  # 3. 如需指定发送账号，填入 send_key
+  # send_key: "your_coolpush_skey"
+
 # ==================== 推送频率限制 ====================
 rate_limit:
   # 每分钟最大推送数

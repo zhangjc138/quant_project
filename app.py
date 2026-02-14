@@ -376,6 +376,22 @@ def show_stock_selector():
             with col_pro2:
                 profit_growth_max = st.number_input("最大净利润增速 (%)", value=100, key="profit_max")
         
+        # 推送设置
+        with st.expander("🔔 推送设置", expanded=False):
+            enable_push = st.toggle("启用推送通知", value=False, help="开启后将通过配置的渠道发送信号通知")
+            
+            if enable_push:
+                push_channel = st.selectbox("推送渠道", ["飞书", "微信"], help="选择推送方式")
+                
+                if push_channel == "飞书":
+                    webhook_url = st.text_input("飞书Webhook URL", type="password", help="填入飞书群机器人Webhook地址")
+                elif push_channel == "微信":
+                    push_method = st.selectbox("微信推送方式", ["Server酱", "酷推"], help="选择微信推送方式")
+                    if push_method == "Server酱":
+                        wechat_key = st.text_input("Server酱 SCKEY", type="password", help="填入Server酱的SCKEY")
+                    else:
+                        wechat_key = st.text_input("酷推 Skey", type="password", help="填入酷推的Skey")
+        
         scan_button = st.button("🔍 开始选股", type="primary")
     
     with col2:

@@ -16,6 +16,10 @@
       "ou_xxxxxxxxxxxxx"
     ]
   },
+  "wechat": {
+    "method": "serverchan",
+    "key": "your_serverchan_sckey"
+  },
   "rate_limit": {
     "max_per_minute": 3,
     "max_per_hour": 20,
