@@ -648,6 +648,15 @@ def show_stock_selector():
                     hide_index=True
                 )
                 
+                # 添加到自选股按钮
+                st.subheader("⭐ 添加到自选股")
+                cols = st.columns(len(results))
+                for idx, r in enumerate(results):
+                    with cols[idx]:
+                        if st.button(f"➕ {r['代码']}", key=f"add_watch_{r['代码']}"):
+                            add_to_watchlist(r['代码'], r['名称'])
+                            st.success(f"已添加 {r['代码']} {r['名称']} 到自选股")
+                
                 # 信号统计
                 signal_counts = display_df['信号'].value_counts()
                 st.write("📊 信号统计:", signal_counts.to_dict())
@@ -1209,8 +1218,8 @@ def show_scoring():
                     scores.get('RSI位置', 0),
                     scores.get('MACD状态', 0)
                 ]
-                max_vals = [25, 25, 15, 20, 15]
-                normalized = [v/m*100 if m > 0 else 0 for v, m in zip(values, max_vals)]
+                # 直接使用原始分数（已经是百分制）
+                normalized = values
                 
                 fig_radar = go.Figure()
                 fig_radar.add_trace(go.Scatterpolar(
