@@ -1000,13 +1000,148 @@ def show_sidebar():
 
 # ==================== 主函数 ====================
 
+def show_dashboard():
+    """仪表盘页面 - 总览"""
+    st.markdown('<p class="main-header">📊 仪表盘</p>', unsafe_allow_html=True)
+    
+    # 快捷统计卡片
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown("""
+        <div class="metric-card">
+            <div class="metric-value" style="color: #22c55e;">0</div>
+            <div class="metric-label">今日买入信号</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="metric-card">
+            <div class="metric-value" style="color: #ef4444;">0</div>
+            <div class="metric-label">今日卖出信号</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div class="metric-card">
+            <div class="metric-value" style="color: #6366f1;">5</div>
+            <div class="metric-label">自选股数量</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown("""
+        <div class="metric-card">
+            <div class="metric-value" style="color: #f59e0b;">72.5</div>
+            <div class="metric-label">综合评分</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # 快捷选股区
+    col_left, col_right = st.columns([1, 2])
+    
+    with col_left:
+        st.subheader("🔍 快速选股")
+        
+        quick_symbol = st.text_input("股票代码", value="600519", help="输入股票代码快速查看")
+        
+        if st.button("查询", type="primary"):
+            with st.spinner("正在获取数据..."):
+                df = generate_mock_data(quick_symbol)
+                df = calculate_indicators(df)
+                
+                if len(df) >= 20:
+                    latest = df.iloc[-1]
+                    signal, desc = get_signal_from_indicators(latest)
+                    
+                    # 显示结果
+                    st.success(f"信号: {signal}")
+                    st.info(f"MA20角度: {latest.get('ma20_angle', 0):.2f}°")
+                    st.info(f"RSI: {latest.get('rsi', 50):.1f}")
+    
+    with col_right:
+        st.subheader("📈 市场概览")
+        st.info("📊 市场数据加载中...")
+    
+    st.markdown("---")
+    
+    # 快捷功能入口
+    st.subheader("🚀 快捷功能")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.button("📈 智能选股", help="进入选股页面", use_container_width=True)
+    
+    with col2:
+        st.button("📊 策略回测", help="进入回测页面", use_container_width=True)
+    
+    with col3:
+        st.button("🤖 ML预测", help="进入ML预测页面", use_container_width=True)
+    
+    with col4:
+        st.button("⭐ 评分系统", help="进入评分页面", use_container_width=True)
+
+
 def main():
     """主函数"""
-    # 侧边栏导航
-    page = show_sidebar()
+    # 应用自定义样式
+    try:
+        from theme import apply_custom_css
+        st.markdown(apply_custom_css(), unsafe_allow_html=True)
+    except ImportError:
+        pass
+    
+    # 页面配置
+    st.set_page_config(
+        page_title="quant_project - 智能选股系统",
+        page_icon="📈",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    # 侧边栏导航（使用Tabs）
+    with st.sidebar:
+        st.title("📈 quant_project")
+        st.markdown("---")
+        
+        page = st.radio(
+            "导航",
+            ["仪表盘", "选股", "回测", "ML预测", "评分系统"]
+        )
+        
+        st.markdown("---")
+        
+        # 系统信息
+        st.subheader("ℹ️ 系统信息")
+        
+        info = {
+            "版本": "v1.2.0",
+            "状态": "✅ 正常运行",
+            "数据": "📊 模拟数据"
+        }
+        
+        for k, v in info.items():
+            st.text(f"{k}: {v}")
+        
+        # 快捷链接
+        st.markdown("---")
+        st.subheader("🔗 快捷链接")
+        
+        st.markdown("""
+        - [项目首页](https://github.com/zhangjc138/quant_project)
+        - [使用文档](#)
+        - [反馈建议](#)
+        """)
     
     # 根据导航显示对应页面
-    if page == "选股":
+    if page == "仪表盘":
+        show_dashboard()
+    elif page == "选股":
         show_stock_selector()
     elif page == "回测":
         show_backtest()
