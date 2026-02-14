@@ -154,6 +154,23 @@ def calculate_indicators(df):
     result['volume_ma5'] = result['volume'].rolling(5).mean()
     result['volume_ratio'] = result['volume'] / result['volume_ma5']
     
+    # BOLL 布林带
+    boll_middle = result['close'].rolling(window=20).mean()
+    boll_std = result['close'].rolling(window=20).std()
+    result['boll_upper'] = boll_middle + 2 * boll_std
+    result['boll_lower'] = boll_middle - 2 * boll_std
+    result['boll_width'] = result['boll_upper'] - result['boll_lower']
+    result['boll_position'] = (result['close'] - result['boll_lower']) / \
+        result['boll_width'].replace(0, np.nan)
+    
+    # KDJ 随机指标
+    low_min = result['low'].rolling(window=9).min()
+    high_max = result['high'].rolling(window=9).max()
+    rsv = ((result['close'] - low_min) / (high_max - low_min).replace(0, np.nan) * 100).fillna(50)
+    result['kdj_k'] = rsv.rolling(window=3).mean()
+    result['kdj_d'] = result['kdj_k'].rolling(window=3).mean()
+    result['kdj_j'] = 3 * result['kdj_k'] - 2 * result['kdj_d']
+    
     return result
 
 
@@ -163,6 +180,9 @@ def get_signal_from_indicators(row):
     rsi = row.get('rsi', 50)
     macd_diff = row.get('macd_diff', 0)
     macd_dea = row.get('macd_dea', 0)
+    boll_position = row.get('boll_position', 0.5)
+    kdj_k = row.get('kdj_k', 50)
+    kdj_d = row.get('kdj_d', 50)
     
     if pd.isna(ma20_angle) or pd.isna(rsi):
         return "HOLD", "数据不足"
@@ -191,6 +211,35 @@ def get_signal_from_indicators(row):
     else:
         macd_signal = "中性"
     
+    # BOLL判断
+    if pd.isna(boll_position):
+        boll_signal = "中性"
+    elif boll_position >= 0.9:
+        boll_signal = "超买"
+    elif boll_position <= 0.1:
+        boll_signal = "超卖"
+    else:
+        boll_signal = "中性"
+    
+    # KDJ判断
+    kdj_prev_k = row.get('kdj_k', 50) if 'kdj_k' in row else 50
+    kdj_prev_d = row.get('kdj_d', 50) if 'kdj_d' in row else 50
+    
+    if pd.isna(kdj_k) or pd.isna(kdj_d):
+        kdj_signal = "中性"
+    elif kdj_k >= 80 and kdj_d >= 80:
+        kdj_signal = "超买"
+    elif kdj_k <= 20 and kdj_d <= 20:
+        kdj_signal = "超卖"
+    elif kdj_prev_k <= kdj_prev_d and kdj_k > kdj_d:
+        kdj_signal = "金叉"
+    elif kdj_prev_k >= kdj_prev_d and kdj_k < kdj_d:
+        kdj_signal = "死叉"
+    elif kdj_k > kdj_d:
+        kdj_signal = "多头"
+    else:
+        kdj_signal = "空头"
+    
     # 综合信号
     if trend_signal == "BUY" and macd_signal == "金叉":
         signal = "🟢 强力买入"
@@ -201,7 +250,9 @@ def get_signal_from_indicators(row):
     else:
         signal = "🟡 持有"
     
-    return signal, f"{trend_signal} | {rsi_signal} | {macd_signal}"
+    details = f"{trend_signal} | {rsi_signal} | {macd_signal} | {boll_signal} | {kdj_signal}"
+    
+    return signal, details
 
 
 def plot_candlestick_with_indicators(df, symbol="股票"):
@@ -284,6 +335,15 @@ def show_stock_selector():
             symbols = selected if selected else [stock_pool[0][0]]
         
         # 筛选参数
+        # 行业筛选
+        industry_options = ["全部"] + sorted([
+            "科技", "消费", "医药", "金融", "地产", "周期", 
+            "制造", "能源", "军工", "新能源", "半导体",
+            "新能源汽车", "人工智能", "云计算", "生物医药",
+            "新材料", "数字经济", "智能制造", "绿色能源", "高端装备"
+        ])
+        selected_industry = st.selectbox("行业板块", industry_options, help="选择行业进行筛选")
+        
         with st.expander("基本面筛选 (付费版)", expanded=False):
             if PREMIUM_FEATURES:
                 pe_min = st.number_input("PE最小", value=0)

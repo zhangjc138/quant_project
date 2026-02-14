@@ -2,12 +2,13 @@
 """
 MA20 角度选股策略模块
 基于 MA20 均线斜率识别趋势强度
-支持 RSI、MACD 等技术指标
+支持 RSI、MACD、BOLL、KDJ 等技术指标
+支持邮件/飞书推送功能
 """
 
 import pandas as pd
 import numpy as np
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Any
 from dataclasses import dataclass
 import akshare as ak
 from datetime import datetime, timedelta
@@ -20,6 +21,22 @@ try:
 except ImportError:
     LOCAL_DATA_AVAILABLE = False
     print("警告: 本地数据模块不可用，将使用 akshare 在线数据")
+
+# 尝试导入推送模块
+try:
+    from notifier import NotificationManager, create_notifier
+    PUSH_NOTIFICATION_AVAILABLE = True
+except ImportError:
+    PUSH_NOTIFICATION_AVAILABLE = False
+    print("警告: 推送模块不可用")
+
+# 尝试导入技术指标模块
+try:
+    from indicators import TechnicalIndicators as NewTechnicalIndicators
+    NEW_INDICATORS_AVAILABLE = True
+except ImportError:
+    NEW_INDICATORS_AVAILABLE = False
+    print("警告: 高级技术指标模块不可用")
 
 
 @dataclass
@@ -35,9 +52,21 @@ class StockSignal:
     rsi_signal: str      # RSI 信号 (OVERBOUGHT/OVERSOLD/NEUTRAL)
     macd: float          # MACD 值 (DIF)
     macd_signal: str     # MACD 信号 (GOLD_CROSS/DEAD_CROSS/NEUTRAL)
+    # BOLL 布林带
+    boll_upper: float     # BOLL 上轨
+    boll_lower: float     # BOLL 下轨
+    boll_position: float  # BOLL 位置
+    boll_signal: str      # BOLL 信号
+    # KDJ 随机指标
+    kdj_k: float          # K 值
+    kdj_d: float          # D 值
+    kdj_j: float          # J 值
+    kdj_signal: str      # KDJ 信号
     signal: str           # 综合信号 BUY/SELL/HOLD
     signal_desc: str      # 信号描述
     update_time: str      # 更新时间
+    # 行业板块
+    industry: str = "未知"   # 所属行业
 
 
 class TechnicalIndicator:
@@ -229,6 +258,7 @@ class StockSelector:
     - 计算 MA20 均线角度
     - 生成 BUY/SELL/HOLD 信号
     - 支持自定义股票池扫描
+    - 支持邮件/飞书推送
     """
     
     # 默认配置
@@ -247,16 +277,43 @@ class StockSelector:
         "new_stock_days": 60,           # 新股判定天数
     }
     
-    def __init__(self, config: Optional[Dict] = None):
+    # 推送配置
+    DEFAULT_PUSH_CONFIG = {
+        "push_enabled": False,        # 是否启用推送
+        "push_on_buy": True,           # 买入信号是否推送
+        "push_on_sell": True,          # 卖出信号是否推送
+        "push_on_hold": False,         # 持有信号是否推送
+        "push_buy_only": True,         # 只推送新出现的买入信号（避免重复）
+        "notify_email": False,         # 是否发送邮件
+        "notify_feishu": False,         # 是否发送飞书
+        "min_angle_for_push": 3.0,     # 最小角度阈值触发推送
+        "min_rsi_for_buy_push": 50,    # 买入推送的RSI上限（避免高位接盘）
+    }
+    
+    def __init__(self, config: Optional[Dict] = None, push_config: Optional[Dict] = None):
         """
         初始化选股器
         
         Args:
-            config: 配置字典，覆盖默认配置
+            config: 选股配置字典，覆盖默认配置
+            push_config: 推送配置字典
         """
         self.config = {**self.DEFAULT_CONFIG, **(config or {})}
+        self.push_config = {**self.DEFAULT_PUSH_CONFIG, **(push_config or {})}
         self.watchlist = self._get_default_watchlist()
         self.indicator = TechnicalIndicator()
+        self._notifier: Optional[NotificationManager] = None
+        self._last_signals: Dict[str, str] = {}  # 记录上次的信号状态
+        
+    def set_notifier(self, notifier: NotificationManager):
+        """
+        设置推送通知器
+        
+        Args:
+            notifier: NotificationManager 实例
+        """
+        self._notifier = notifier
+        self.push_config["push_enabled"] = True
     
     def _get_default_watchlist(self) -> Dict[str, Dict]:
         """获取默认监控股票池"""
@@ -350,6 +407,60 @@ class StockSelector:
             self._calculate_angle_internal, raw=False
         )
         
+        # 计算 BOLL 布林带（使用高级指标模块或内置计算）
+        if NEW_INDICATORS_AVAILABLE:
+            try:
+                from indicators import TechnicalIndicators as Ind
+                df['BOLL_upper'], df['BOLL_middle'], df['BOLL_lower'] = \
+                    Ind.calculate_boll(df['close'], period=20, std_dev=2)
+                _, _, df['BOLL_position'] = Ind.calculate_boll_with_position(
+                    df['close'], period=20, std_dev=2
+                )[2:]
+                # BOLL信号
+                df['BOLL_signal'] = df.apply(
+                    lambda x: Ind.detect_boll_signal(
+                        x['close'], x['BOLL_upper'], x['BOLL_lower'], x['BOLL_position']
+                    ), axis=1
+                )
+            except Exception as e:
+                print(f"BOLL计算失败: {e}")
+        else:
+            # 简化版BOLL计算
+            df['BOLL_middle'] = df['close'].rolling(window=20).mean()
+            df['BOLL_std'] = df['close'].rolling(window=20).std()
+            df['BOLL_upper'] = df['BOLL_middle'] + 2 * df['BOLL_std']
+            df['BOLL_lower'] = df['BOLL_middle'] - 2 * df['BOLL_std']
+            df['BOLL_position'] = (df['close'] - df['BOLL_lower']) / \
+                (df['BOLL_upper'] - df['BOLL_lower']).replace(0, np.nan)
+            df['BOLL_signal'] = df.apply(
+                lambda x: 'OVERBOUGHT' if x['close'] >= x['BOLL_upper'] 
+                else ('OVERSOLD' if x['close'] <= x['BOLL_lower'] else 'NEUTRAL'), axis=1
+            )
+        
+        # 计算 KDJ 随机指标（使用高级指标模块或内置计算）
+        if NEW_INDICATORS_AVAILABLE:
+            try:
+                from indicators import TechnicalIndicators as Ind
+                df['KDJ_K'], df['KDJ_D'], df['KDJ_J'] = Ind.calculate_kdj(
+                    df['high'], df['low'], df['close'],
+                    n=9, m1=3, m2=3
+                )
+                df['KDJ_signal'] = Ind.detect_kdj_cross(df['KDJ_K'], df['KDJ_D'])
+            except Exception as e:
+                print(f"KDJ计算失败: {e}")
+        else:
+            # 简化版KDJ计算
+            low_min = df['low'].rolling(window=9).min()
+            high_max = df['high'].rolling(window=9).max()
+            rsv = ((df['close'] - low_min) / (high_max - low_min).replace(0, np.nan) * 100).fillna(50)
+            df['KDJ_K'] = rsv.rolling(window=3).mean()
+            df['KDJ_D'] = df['KDJ_K'].rolling(window=3).mean()
+            df['KDJ_J'] = 3 * df['KDJ_K'] - 2 * df['KDJ_D']
+            df['KDJ_signal'] = df.apply(
+                lambda x: 'OVERBOUGHT' if x['KDJ_K'] >= 80 and x['KDJ_D'] >= 80
+                else ('OVERSOLD' if x['KDJ_K'] <= 20 and x['KDJ_D'] <= 20 else 'NEUTRAL'), axis=1
+            )
+        
         return df
     
     def _calculate_angle_internal(self, series: pd.Series) -> float:
@@ -434,12 +545,13 @@ class StockSelector:
             print(f"获取数据失败 {symbol}: {e}")
             return None
     
-    def get_signal(self, symbol: str) -> Optional[StockSignal]:
+    def get_signal(self, symbol: str, enable_push: bool = True) -> Optional[StockSignal]:
         """
         获取单个股票的 MA20 角度信号
         
         Args:
             symbol: 股票代码
+            enable_push: 是否触发推送（与push_config配合使用）
             
         Returns:
             StockSignal 或 None
@@ -489,6 +601,36 @@ class StockSelector:
         
         macd_signal = self.indicator.detect_macd_signal(dif, dif_prev, dea, dea_prev)
         
+        # BOLL 布林带
+        boll_upper = current.get('BOLL_upper', 0.0)
+        boll_lower = current.get('BOLL_lower', 0.0)
+        boll_position = current.get('BOLL_position', 0.5)
+        boll_signal = current.get('BOLL_signal', 'NEUTRAL')
+        
+        if pd.isna(boll_upper):
+            boll_upper = 0.0
+        if pd.isna(boll_lower):
+            boll_lower = 0.0
+        if pd.isna(boll_position):
+            boll_position = 0.5
+        if pd.isna(boll_signal):
+            boll_signal = 'NEUTRAL'
+        
+        # KDJ 随机指标
+        kdj_k = current.get('KDJ_K', 50.0)
+        kdj_d = current.get('KDJ_D', 50.0)
+        kdj_j = current.get('KDJ_J', 50.0)
+        kdj_signal = current.get('KDJ_signal', 'NEUTRAL')
+        
+        if pd.isna(kdj_k):
+            kdj_k = 50.0
+        if pd.isna(kdj_d):
+            kdj_d = 50.0
+        if pd.isna(kdj_j):
+            kdj_j = 50.0
+        if pd.isna(kdj_signal):
+            kdj_signal = 'NEUTRAL'
+        
         # 获取最新价格和涨跌幅
         current_price = df['close'].iloc[-1]
         change_pct = df['change_pct'].iloc[-1]
@@ -501,13 +643,15 @@ class StockSelector:
             rsi_signal=rsi_signal,
             macd_signal=macd_signal,
             price=current_price,
-            ma20=ma20
+            ma20=ma20,
+            boll_signal=boll_signal,
+            kdj_signal=kdj_signal
         )
         
         # 股票名称
         name = self.watchlist.get(symbol, {}).get("name", symbol)
         
-        return StockSignal(
+        result_signal = StockSignal(
             symbol=symbol,
             name=name,
             price=current_price,
@@ -518,10 +662,97 @@ class StockSelector:
             rsi_signal=rsi_signal,
             macd=dif,
             macd_signal=macd_signal,
+            boll_upper=boll_upper,
+            boll_lower=boll_lower,
+            boll_position=boll_position,
+            boll_signal=boll_signal,
+            kdj_k=kdj_k,
+            kdj_d=kdj_d,
+            kdj_j=kdj_j,
+            kdj_signal=kdj_signal,
             signal=signal,
             signal_desc=signal_desc,
+            industry="未知",  # TODO: 接入行业数据
             update_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         )
+        
+        # 触发推送检查
+        if enable_push and self._notifier and self.push_config.get("push_enabled"):
+            self._check_and_push_signal(symbol, name, result_signal)
+        
+        return result_signal
+    
+    def _check_and_push_signal(self, symbol: str, name: str, signal: StockSignal):
+        """
+        检查并触发推送
+        
+        Args:
+            symbol: 股票代码
+            name: 股票名称
+            signal: StockSignal 对象
+        """
+        pc = self.push_config
+        last_signal = self._last_signals.get(symbol)
+        
+        # 买入信号推送
+        if signal.signal == "BUY" and pc.get("push_on_buy"):
+            # 检查是否是新出现的买入信号
+            should_push = False
+            
+            if pc.get("push_buy_only"):
+                # 只推送新出现的买入信号
+                if last_signal != "BUY":
+                    should_push = True
+            else:
+                # 每次都推送
+                should_push = True
+            
+            # 检查最小角度阈值
+            if should_push and signal.ma20_angle < pc.get("min_angle_for_push", 0):
+                should_push = False
+            
+            # 检查RSI上限（避免高位接盘）
+            if should_push and signal.rsi > pc.get("min_rsi_for_buy_push", 50):
+                should_push = False
+            
+            if should_push:
+                self._send_push(signal)
+                self._last_signals[symbol] = "BUY"
+        
+        # 卖出信号推送
+        elif signal.signal == "SELL" and pc.get("push_on_sell"):
+            if last_signal != "SELL":
+                self._send_push(signal)
+                self._last_signals[symbol] = "SELL"
+        
+        # 持有信号推送（可选）
+        elif signal.signal == "HOLD" and pc.get("push_on_hold"):
+            # 只推送信号变化
+            if last_signal and last_signal != "HOLD":
+                self._send_push(signal)
+            self._last_signals[symbol] = "HOLD"
+    
+    def _send_push(self, signal: StockSignal):
+        """
+        发送推送
+        
+        Args:
+            signal: StockSignal 对象
+        """
+        try:
+            if self._notifier:
+                self._notifier.send_stock_signal(
+                    symbol=signal.symbol,
+                    name=signal.name,
+                    signal=signal.signal,
+                    price=signal.price,
+                    change_pct=signal.change_pct,
+                    ma20_angle=signal.ma20_angle,
+                    rsi=signal.rsi,
+                    macd_signal=signal.macd_signal
+                )
+        except Exception as e:
+            print(f"⚠️ 推送失败 {signal.symbol}: {e}")
     
     def _generate_signal(
         self,
@@ -530,7 +761,9 @@ class StockSelector:
         rsi_signal: str,
         macd_signal: str,
         price: float,
-        ma20: float
+        ma20: float,
+        boll_signal: str = 'NEUTRAL',
+        kdj_signal: str = 'NEUTRAL'
     ) -> Tuple[str, str]:
         """
         生成综合交易信号
@@ -542,6 +775,8 @@ class StockSelector:
             macd_signal: MACD 信号
             price: 当前价格
             ma20: MA20 值
+            boll_signal: BOLL 信号
+            kdj_signal: KDJ 信号
             
         Returns:
             Tuple[信号, 描述]
@@ -550,36 +785,99 @@ class StockSelector:
         
         # 买入条件
         buy_conditions = []
+        buy_score = 0  # 买入信号评分
         
         # MA20 角度大于阈值
         if ma20_angle > config["angle_threshold_buy"]:
             buy_conditions.append("MA20上升")
+            buy_score += 2
         
         # RSI 条件（可选）
         if config.get("require_rsi_oversold", True):
             if rsi_signal == "OVERSOLD":
                 buy_conditions.append("RSI超卖")
+                buy_score += 1
         else:
             if rsi_signal == "NEUTRAL":
                 buy_conditions.append("RSI中性")
+                buy_score += 0.5
         
         # MACD 条件（可选）
         if config.get("require_macd_golden", True):
             if macd_signal == "GOLD_CROSS":
                 buy_conditions.append("MACD金叉")
+                buy_score += 2
         else:
             if macd_signal in ["GOLD_CROSS", "NEUTRAL"]:
                 buy_conditions.append("MACD配合")
+                buy_score += 1
         
-        # 判断买入信号
-        if (ma20_angle > config["angle_threshold_buy"] and
-            (not config.get("require_rsi_oversold", True) or rsi_signal == "OVERSOLD") and
-            (not config.get("require_macd_golden", True) or macd_signal == "GOLD_CROSS")):
-            return "BUY", f"看涨信号: {', '.join(buy_conditions)}"
+        # BOLL 条件
+        if boll_signal == "OVERSOLD":
+            buy_conditions.append("BOLL下轨反弹")
+            buy_score += 1.5
+        elif boll_signal == "NEUTRAL":
+            buy_score += 0.5
+        
+        # KDJ 条件
+        if kdj_signal == "GOLD_CROSS":
+            buy_conditions.append("KDJ金叉")
+            buy_score += 2
+        elif kdj_signal == "OVERSOLD":
+            buy_conditions.append("KDJ超卖")
+            buy_score += 1.5
+        elif kdj_signal == "BULLISH":
+            buy_conditions.append("KDJ多头")
+            buy_score += 1
+        
+        # 综合买入信号判断（支持复合策略）
+        use_boll_kdj = config.get("use_boll_kdj", False)
+        
+        if use_boll_kdj:
+            # 复合策略：MA20 + RSI + BOLL + KDJ
+            if (ma20_angle > config["angle_threshold_buy"] and
+                (macd_signal == "GOLD_CROSS" or macd_signal == "NEUTRAL") and
+                (boll_signal in ["OVERSOLD", "NEUTRAL"]) and
+                (kdj_signal in ["GOLD_CROSS", "OVERSOLD", "BULLISH"])):
+                return "BUY", f"复合买入: {', '.join(buy_conditions)}"
+        else:
+            # 原策略：MA20 + RSI + MACD
+            if (ma20_angle > config["angle_threshold_buy"] and
+                (not config.get("require_rsi_oversold", True) or rsi_signal == "OVERSOLD") and
+                (not config.get("require_macd_golden", True) or macd_signal == "GOLD_CROSS")):
+                return "BUY", f"看涨信号: {', '.join(buy_conditions)}"
         
         # 卖出条件
+        sell_conditions = []
+        
+        # MA20 角度小于阈值
         if ma20_angle < config["angle_threshold_sell"]:
-            return "SELL", f"看跌信号: MA20角度{ma20_angle:.2f}° < {config['angle_threshold_sell']}°"
+            sell_conditions.append("MA20下行")
+        
+        # RSI 超买
+        if rsi_signal == "OVERBOUGHT":
+            sell_conditions.append("RSI超买")
+        
+        # MACD 死叉
+        if macd_signal == "DEAD_CROSS":
+            sell_conditions.append("MACD死叉")
+        
+        # BOLL 超买
+        if boll_signal == "OVERBOUGHT":
+            sell_conditions.append("BOLL上轨压力")
+        
+        # KDJ 死叉或超买
+        if kdj_signal == "DEAD_CROSS":
+            sell_conditions.append("KDJ死叉")
+        elif kdj_signal == "OVERBOUGHT":
+            sell_conditions.append("KDJ超买")
+        
+        # 综合卖出信号
+        if (ma20_angle < config["angle_threshold_sell"] or
+            rsi_signal == "OVERBOUGHT" or
+            macd_signal == "DEAD_CROSS" or
+            kdj_signal == "DEAD_CROSS"):
+            return "SELL", f"看跌信号: {', '.join(sell_conditions)}"
         
         # 震荡/观望
         if ma20_angle >= config["angle_threshold_sell"]:
@@ -587,9 +885,12 @@ class StockSelector:
         
         return "HOLD", "观望等待"
     
-    def scan_watchlist(self) -> List[StockSignal]:
+    def scan_watchlist(self, industry: str = None) -> List[StockSignal]:
         """
         扫描股票池，获取所有信号
+        
+        Args:
+            industry: 行业筛选（可选）
         
         Returns:
             List[StockSignal]: 信号列表
@@ -602,6 +903,9 @@ class StockSelector:
             
             signal = self.get_signal(symbol)
             if signal:
+                # 行业过滤
+                if industry and signal.industry != industry and industry not in signal.industry:
+                    continue
                 results.append(signal)
         
         # 按 MA20 角度降序排列
@@ -609,12 +913,13 @@ class StockSelector:
         
         return results
     
-    def scan_all_a_shares(self, limit: int = 100) -> List[StockSignal]:
+    def scan_all_a_shares(self, limit: int = 100, industry: str = None) -> List[StockSignal]:
         """
         扫描全部 A 股（使用 akshare 获取股票列表）
         
         Args:
             limit: 限制扫描数量
+            industry: 行业筛选（可选）
             
         Returns:
             List[StockSignal]: 信号列表
