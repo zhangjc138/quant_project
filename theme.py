@@ -88,14 +88,30 @@ def apply_custom_css():
     
     /* 侧边栏样式 - 提高对比度 */
     [data-testid="stSidebar"] {
-        background-color: #1e293b;
+        background-color: #0f172a;
     }
     
-    /* 侧边栏文字更亮 */
-    [data-testid="stSidebar"] .stMarkdown,
-    [data-testid="stSidebar"] .stText,
-    [data-testid="stSidebar"] label {
-        color: #e2e8f0 !important;
+    /* 侧边栏标题 - 最亮 */
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {
+        color: #f8fafc !important;
+        font-weight: 700;
+    }
+    
+    /* 侧边栏所有文字 - 提高对比度 */
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] div {
+        color: #f8fafc !important;
+    }
+    
+    /* radio 按钮文字 - 最亮最重要 */
+    [data-testid="stSidebar"] .stRadio label {
+        color: #f8fafc !important;
+        font-weight: 600;
+        font-size: 1.1rem;
+        padding: 0.75rem 0;
     }
     
     /* 展开框样式 */
