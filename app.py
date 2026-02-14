@@ -19,6 +19,56 @@ import plotly.express as px
 from datetime import datetime, timedelta
 import sys
 import os
+import json
+import hashlib
+
+# ==================== 自选股管理 ====================
+WATCHLIST_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'watchlist.json')
+
+def load_watchlist():
+    """加载自选股列表"""
+    try:
+        if os.path.exists(WATCHLIST_FILE):
+            with open(WATCHLIST_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except:
+        pass
+    return {}
+
+def save_watchlist(watchlist):
+    """保存自选股列表"""
+    try:
+        with open(WATCHLIST_FILE, 'w', encoding='utf-8') as f:
+            json.dump(watchlist, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"保存自选股失败: {e}")
+
+def add_to_watchlist(symbol, name="", group="默认"):
+    """添加股票到自选股"""
+    watchlist = load_watchlist()
+    if group not in watchlist:
+        watchlist[group] = []
+    
+    # 检查是否已存在
+    for stock in watchlist[group]:
+        if stock['code'] == symbol:
+            return False
+    
+    watchlist[group].append({'code': symbol, 'name': name or symbol})
+    save_watchlist(watchlist)
+    return True
+
+def remove_from_watchlist(symbol, group="默认"):
+    """从自选股移除"""
+    watchlist = load_watchlist()
+    if group in watchlist:
+        watchlist[group] = [s for s in watchlist[group] if s['code'] != symbol]
+        save_watchlist(watchlist)
+
+def get_watchlist_stocks(group="默认"):
+    """获取自选股列表"""
+    watchlist = load_watchlist()
+    return watchlist.get(group, [])
 
 # 添加项目路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -119,14 +169,14 @@ def generate_mock_data(symbol, days=200):
 
 def get_stock_data(symbol: str, days: int = 365):
     """
-    获取股票数据（优先真实数据，失败用模拟数据）
+    获取股票数据（仅真实数据，失败返回None）
     
     Args:
         symbol: 股票代码
         days: 数据天数
     
     Returns:
-        DataFrame: 股票数据
+        DataFrame: 股票数据，失败返回None
     """
     try:
         from stock_data import get_stock_daily
@@ -136,8 +186,8 @@ def get_stock_data(symbol: str, days: int = 365):
     except Exception as e:
         print(f"获取真实数据失败: {e}")
     
-    # 使用模拟数据
-    return generate_mock_data(symbol, days)
+    # 不再使用模拟数据，直接返回None
+    return None
 
 
 @st.cache_data(ttl=3600)
@@ -532,10 +582,13 @@ def show_stock_selector():
             if input_method == "单只股票" and symbols:
                 sym = symbols[0]
                 name = dict(A_SHARE_POOL).get(sym, sym) if PICKER_AVAILABLE else sym
-                df = results[0]['数据'] if results else generate_mock_data(sym)
-                fig = plot_candlestick_with_indicators(df, f"{sym} - {name}")
-                if fig:
-                    st.plotly_chart(fig, use_container_width=True)
+                df = results[0]['数据'] if results else None
+                if df is not None:
+                    fig = plot_candlestick_with_indicators(df, f"{sym} - {name}")
+                    if fig:
+                        st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning(f"无法获取 {sym} 的真实数据")
             
             # 显示结果表格
             if results:
@@ -1171,6 +1224,132 @@ def show_scoring():
                 st.error(f"评分失败: {e}")
 
 
+def show_watchlist():
+    """自选股管理页面"""
+    st.markdown('<p class="main-header">⭐ 自选股管理</p>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("添加股票")
+        
+        # 添加股票表单
+        with st.form("add_stock_form"):
+            new_symbol = st.text_input("股票代码", placeholder="如: 600519")
+            new_name = st.text_input("股票名称(可选)", placeholder="如: 贵州茅台")
+            new_group = st.selectbox("分组", ["默认", "科技", "消费", "医药", "金融", "新能源"])
+            
+            submitted = st.form_submit_button("➕ 添加到自选")
+            
+            if submitted and new_symbol:
+                # 标准化代码
+                symbol = new_symbol.strip()
+                if add_to_watchlist(symbol, new_name or symbol, new_group):
+                    st.success(f"✅ 已添加 {symbol} 到 {new_group} 分组")
+                    st.rerun()
+                else:
+                    st.warning(f"⚠️ {symbol} 已在自选股中")
+        
+        # 分组管理
+        st.markdown("---")
+        st.subheader("分组管理")
+        
+        watchlist = load_watchlist()
+        groups = list(watchlist.keys())
+        
+        if groups:
+            delete_group = st.selectbox("删除分组", [""] + groups)
+            if st.button("🗑️ 删除分组"):
+                if delete_group:
+                    del watchlist[delete_group]
+                    save_watchlist(watchlist)
+                    st.success(f"✅ 已删除分组: {delete_group}")
+                    st.rerun()
+    
+    with col2:
+        st.subheader("我的自选股")
+        
+        watchlist = load_watchlist()
+        
+        if not watchlist:
+            st.info("📝 自选股为空，请先添加股票")
+            return
+        
+        # 显示各分组
+        for group_name, stocks in watchlist.items():
+            with st.expander(f"📁 {group_name} ({len(stocks)}只)", expanded=True):
+                if not stocks:
+                    st.info("该分组为空")
+                    continue
+                
+                # 获取每只股票的实时数据
+                stock_data = []
+                for stock in stocks:
+                    sym = stock['code']
+                    name = stock['name']
+                    
+                    # 获取真实数据
+                    df = get_stock_data(sym)
+                    if df is not None and len(df) >= 20:
+                        latest = df.iloc[-1]
+                        signal, desc = get_signal_from_indicators(latest)
+                        
+                        # 计算评分
+                        ma20_angle = latest.get('ma20_angle', 0)
+                        rsi = latest.get('rsi', 50)
+                        momentum = latest.get('momentum_5', 0) * 100
+                        
+                        score = 50
+                        if pd.notna(ma20_angle):
+                            if ma20_angle > 3:
+                                score += min(ma20_angle * 3, 20)
+                        if 30 < rsi < 70:
+                            score += 10
+                        if momentum > 0:
+                            score += min(momentum * 2, 20)
+                        score = min(score, 100)
+                        
+                        stock_data.append({
+                            '代码': sym,
+                            '名称': name,
+                            '评分': round(score, 1),
+                            '现价': round(latest['close'], 2),
+                            '涨跌幅': f"{momentum:.2f}%",
+                            'RSI': round(rsi, 1),
+                            '信号': signal
+                        })
+                    else:
+                        # 无法获取数据
+                        stock_data.append({
+                            '代码': sym,
+                            '名称': name,
+                            '评分': '-',
+                            '现价': '-',
+                            '涨跌幅': '-',
+                            'RSI': '-',
+                            '信号': '❌ 数据不可用'
+                        })
+                
+                # 显示表格
+                if stock_data:
+                    df_display = pd.DataFrame(stock_data)
+                    st.dataframe(
+                        df_display,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                
+                # 删除按钮
+                for stock in stocks:
+                    col_del1, col_del2 = st.columns([3, 1])
+                    with col_del1:
+                        st.write(f"{stock['code']} - {stock['name']}")
+                    with col_del2:
+                        if st.button(f"🗑️", key=f"del_{stock['code']}"):
+                            remove_from_watchlist(stock['code'], group_name)
+                            st.rerun()
+
+
 # ==================== 侧边栏 ====================
 
 def show_sidebar():
@@ -1181,7 +1360,7 @@ def show_sidebar():
     # 功能导航
     page = st.sidebar.radio(
         "功能导航",
-        ["选股", "回测", "ML预测", "评分系统"]
+        ["选股", "自选股", "回测", "ML预测", "评分系统"]
     )
     
     st.sidebar.markdown("---")
@@ -1343,7 +1522,7 @@ def main():
         
         page = st.radio(
             "导航",
-            ["仪表盘", "选股", "回测", "ML预测", "评分系统"]
+            ["仪表盘", "选股", "自选股", "回测", "ML预测", "评分系统"]
         )
         
         st.markdown("---")
@@ -1386,6 +1565,8 @@ def main():
         show_dashboard()
     elif page == "选股":
         show_stock_selector()
+    elif page == "自选股":
+        show_watchlist()
     elif page == "回测":
         show_backtest()
     elif page == "ML预测":
