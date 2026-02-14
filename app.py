@@ -744,7 +744,7 @@ def show_backtest():
                         position = 1
                         trades.append({
                             'date': df.index[i] if hasattr(df.index, '__getitem__') else i,
-                            'type': 'BUY',
+                            'type': '买入',
                             'price': price,
                             'shares': shares
                         })
@@ -774,7 +774,7 @@ def show_backtest():
                     cash += shares * price
                     trades.append({
                         'date': df.index[i] if hasattr(df.index, '__getitem__') else i,
-                        'type': 'SELL',
+                        'type': '卖出',
                         'price': price,
                         'shares': shares
                     })
@@ -790,7 +790,7 @@ def show_backtest():
                         cash += shares * price
                         trades.append({
                             'date': df.index[i] if hasattr(df.index, '__getitem__') else i,
-                            'type': 'SELL',
+                            'type': '卖出',
                             'price': price,
                             'shares': shares
                         })
