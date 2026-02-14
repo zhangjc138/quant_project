@@ -932,11 +932,12 @@ def show_ml_prediction():
                             for k, v in result['feature_importance'].items()
                         ]).sort_values('重要性', ascending=True)
                         
-                        fig = px.barh(
+                        fig = px.bar(
                             importance_df, 
                             x='重要性', 
                             y='特征',
                             title='特征重要性',
+                            orientation='h',
                             template='plotly_dark'
                         )
                         st.plotly_chart(fig, use_container_width=True)
@@ -1018,11 +1019,12 @@ def show_ml_prediction():
                         for k, v in result['feature_weights'].items()
                     ]).sort_values('重要性', ascending=True)
                     
-                    fig = px.barh(
+                    fig = px.bar(
                         importance_df, 
                         x='重要性', 
                         y='特征',
                         title='特征重要性',
+                        orientation='h',
                         template='plotly_dark'
                     )
                     st.plotly_chart(fig, use_container_width=True)
