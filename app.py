@@ -615,74 +615,101 @@ def show_backtest():
                 st.error("数据不足，无法进行回测")
                 return
             
-            # 模拟回测逻辑
+            # 模拟回测逻辑 - 使用更宽松的条件确保有交易
             cash = initial_capital
             position = 0
             shares = 0
             trades = []
             equity_curve = []
             
-            for i in range(1, len(df)):
+            for i in range(20, len(df)):  # 从20天开始
                 row = df.iloc[i]
-                prev_row = df.iloc[i-1]
+                prev_row = df.iloc[i-1] if i > 0 else row
                 
-                # 买入信号
-                signal = []
+                # 买入信号（宽松条件）
+                buy_score = 0
+                
                 if use_ma20:
                     ma20_angle = row.get('ma20_angle', 0)
-                    if ma20_angle > 2:  # 从3改为2，更容易触发
-                        signal.append('MA20_BUY')
+                    if pd.notna(ma20_angle):
+                        if ma20_angle > 1.5:  # 放宽到1.5度
+                            buy_score += 30
+                        elif ma20_angle > 0.5:
+                            buy_score += 15
+                
                 if use_rsi:
                     rsi = row.get('rsi', 50)
-                    if rsi < 40:  # 从35改为40，更容易触发
-                        signal.append('RSI_BUY')
+                    if pd.notna(rsi):
+                        if rsi < 45:  # 放宽到45
+                            buy_score += 30
+                        elif rsi < 55:
+                            buy_score += 15
+                
                 if use_macd:
-                    if row.get('macd_diff', 0) > row.get('macd_dea', 0):
-                        signal.append('MACD_BUY')
+                    macd_diff = row.get('macd_diff', 0)
+                    macd_dea = row.get('macd_dea', 0)
+                    if pd.notna(macd_diff) and pd.notna(macd_dea):
+                        if macd_diff > macd_dea:
+                            buy_score += 20
+                
+                # 买入条件
+                if buy_score >= 50 and position == 0:
+                    price = row['close']
+                    shares = int(cash / price * 0.8)
+                    cost = shares * price
+                    if shares > 0 and cost > 0:
+                        cash -= cost
+                        position = 1
+                        trades.append({
+                            'date': df.index[i] if hasattr(df.index, '__getitem__') else i,
+                            'type': 'BUY',
+                            'price': price,
+                            'shares': shares
+                        })
                 
                 # 卖出信号
-                sell_signal = []
+                sell_score = 0
+                
                 if use_ma20:
-                    if row.get('ma20_angle', 0) < -1:  # 从0改为-1
-                        sell_signal.append('MA20_SELL')
+                    ma20_angle = row.get('ma20_angle', 0)
+                    if pd.notna(ma20_angle):
+                        if ma20_angle < -1.5:  # 放宽到-1.5度
+                            sell_score += 30
+                        elif ma20_angle < 0:
+                            sell_score += 15
+                
                 if use_rsi:
-                    if row.get('rsi', 50) > 65:  # 从70改为65
-                        sell_signal.append('RSI_SELL')
+                    rsi = row.get('rsi', 50)
+                    if pd.notna(rsi):
+                        if rsi > 60:  # 放宽到60
+                            sell_score += 30
+                        elif rsi > 55:
+                            sell_score += 15
                 
-                # 交易逻辑
-                if 'BUY' in signal and position == 0:
-                    shares = int(cash / row['close'] * 0.8)
-                    cost = shares * row['close']
-                    cash -= cost
-                    position = 1
+                # 卖出条件
+                if sell_score >= 50 and position == 1:
+                    price = row['close']
+                    cash += shares * price
                     trades.append({
-                        'date': df.index[i],
-                        'type': 'BUY',
-                        'price': row['close'],
-                        'shares': shares
-                    })
-                
-                elif 'SELL' in sell_signal and position == 1:
-                    cash += shares * row['close']
-                    trades.append({
-                        'date': df.index[i],
+                        'date': df.index[i] if hasattr(df.index, '__getitem__') else i,
                         'type': 'SELL',
-                        'price': row['close'],
+                        'price': price,
                         'shares': shares
                     })
                     shares = 0
                     position = 0
                 
-                # 止损止盈
+                # 止损止盈（更敏感）
                 if position == 1 and len(trades) > 0:
                     last_buy = trades[-1]
                     pnl_pct = (row['close'] - last_buy['price']) / last_buy['price']
                     if pnl_pct <= -stop_loss or pnl_pct >= take_profit:
-                        cash += shares * row['close']
+                        price = row['close']
+                        cash += shares * price
                         trades.append({
-                            'date': df.index[i],
+                            'date': df.index[i] if hasattr(df.index, '__getitem__') else i,
                             'type': 'SELL',
-                            'price': row['close'],
+                            'price': price,
                             'shares': shares
                         })
                         shares = 0
@@ -690,7 +717,7 @@ def show_backtest():
                 
                 equity = cash + shares * row['close']
                 equity_curve.append({
-                    'date': df.index[i],
+                    'date': df.index[i] if hasattr(df.index, '__getitem__') else i,
                     'equity': equity
                 })
             
