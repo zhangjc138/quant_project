@@ -115,6 +115,29 @@ def generate_mock_data(symbol, days=200):
     return df
 
 
+def get_stock_data(symbol: str, days: int = 365):
+    """
+    获取股票数据（优先真实数据，失败用模拟数据）
+    
+    Args:
+        symbol: 股票代码
+        days: 数据天数
+    
+    Returns:
+        DataFrame: 股票数据
+    """
+    try:
+        from stock_data import get_stock_daily
+        df = get_stock_daily(symbol)
+        if df is not None and len(df) >= 30:
+            return df.tail(days)
+    except Exception as e:
+        print(f"获取真实数据失败: {e}")
+    
+    # 使用模拟数据
+    return generate_mock_data(symbol, days)
+
+
 @st.cache_data(ttl=3600)
 def calculate_indicators(df):
     """计算技术指标"""
@@ -447,7 +470,7 @@ def show_stock_selector():
             
             for sym in symbols:
                 # 生成/加载数据
-                df = generate_mock_data(sym)
+                df = get_stock_data(sym)
                 df = calculate_indicators(df)
                 
                 if len(df) >= 20:
@@ -579,7 +602,7 @@ def show_backtest():
                 st.info("👈 点击'运行回测'开始分析")
             
             # 生成模拟数据
-            df = generate_mock_data(symbol, days=1000)
+            df = get_stock_data(symbol, days=1000)
             df = calculate_indicators(df)
             
             # 筛选日期范围
@@ -787,7 +810,7 @@ def show_ml_prediction():
     with col2:
         if train_button:
             # 生成训练数据
-            df = generate_mock_data(symbol, days=500)
+            df = get_stock_data(symbol, days=500)
             
             try:
                 # 训练模型
@@ -821,7 +844,7 @@ def show_ml_prediction():
                 st.error(f"训练失败: {e}")
         
         if predict_button:
-            df = generate_mock_data(symbol, days=200)
+            df = get_stock_data(symbol, days=200)
             
             try:
                 selector = MLSelector(model_type=model_type)
@@ -875,7 +898,7 @@ def show_ml_prediction():
     with col2:
         if train_button:
             # 生成训练数据
-            df = generate_mock_data(symbol, days=500)
+            df = get_stock_data(symbol, days=500)
             
             try:
                 # 训练模型
@@ -905,7 +928,7 @@ def show_ml_prediction():
                 st.error(f"训练失败: {e}")
         
         if predict_button:
-            df = generate_mock_data(symbol, days=200)
+            df = get_stock_data(symbol, days=200)
             
             try:
                 selector = MLSelector(model_type=model_type)
@@ -989,7 +1012,7 @@ def show_scoring():
     with col2:
         if score_button:
             # 生成数据
-            df = generate_mock_data(symbol, days=200)
+            df = get_stock_data(symbol, days=200)
             
             try:
                 # 使用评分系统
@@ -1191,7 +1214,7 @@ def show_dashboard():
         
         if st.button("查询", type="primary"):
             with st.spinner("正在获取数据..."):
-                df = generate_mock_data(quick_symbol)
+                df = get_stock_data(quick_symbol)
                 df = calculate_indicators(df)
                 
                 if len(df) >= 20:

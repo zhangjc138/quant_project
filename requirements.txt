@@ -1,6 +1,7 @@
 # quant_project/requirements.txt
 # 基础依赖 (开源版)
 akshare>=1.11.0
+baostock>=0.2.0
 backtrader>=1.9.0
 pandas>=2.0.0
 numpy>=1.26.0
