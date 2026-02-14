@@ -1189,10 +1189,21 @@ def show_sidebar():
     # 系统信息
     st.sidebar.subheader("ℹ️ 系统信息")
     
+    # 检测数据源状态
+    try:
+        from stock_data import get_stock_daily
+        test_df = get_stock_daily('600519', start_date='20260101', end_date='20260214')
+        if test_df is not None and len(test_df) > 30:
+            data_status = "📈 真实数据 (akshare)"
+        else:
+            data_status = "📊 模拟数据"
+    except:
+        data_status = "📊 模拟数据"
+    
     info = {
         "版本": "v1.2.0",
         "状态": "✅ 正常运行",
-        "数据": "📊 模拟数据"
+        "数据": data_status
     }
     
     for k, v in info.items():
@@ -1340,10 +1351,21 @@ def main():
         # 系统信息
         st.subheader("ℹ️ 系统信息")
         
+        # 检测数据源状态
+        try:
+            from stock_data import get_stock_daily
+            test_df = get_stock_daily('600519', start_date='20260101', end_date='20260214')
+            if test_df is not None and len(test_df) > 30:
+                data_status = "📈 真实数据"
+            else:
+                data_status = "📊 模拟数据"
+        except:
+            data_status = "📊 模拟数据"
+        
         info = {
             "版本": "v1.2.0",
             "状态": "✅ 正常运行",
-            "数据": "📊 模拟数据"
+            "数据": data_status
         }
         
         for k, v in info.items():
