@@ -44,7 +44,10 @@ python3 test_units.py
 
 ### P0（影响使用）
 
-- [ ] 无
+- [x] SKLEARN_AVAILABLE NameError ✅ 已修复
+- [x] 批量选股只显示3个信号 ✅ 已修复
+- [x] 基本面料选股为空 ✅ 已修复
+- [x] 快捷链接点击无反应 ✅ 已修复
 
 ### P1（建议修复）
 
