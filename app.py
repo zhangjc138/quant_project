@@ -669,8 +669,11 @@ def show_stock_selector():
                         st.write(f"{signal_emoji} {r['信号']}")
                     with c6:
                         if st.button(f"➕ 自选", key=f"add_{r['代码']}_{r['名称']}"):
-                            add_to_watchlist(r['代码'], r['名称'])
-                            st.toast(f"✅ 已添加 {r['代码']}")
+                            if add_to_watchlist(r['代码'], r['名称']):
+                                st.success(f"✅ 已添加 {r['代码']} {r['名称']}")
+                                st.rerun()
+                            else:
+                                st.warning(f"⚠️ {r['代码']} 已在自选股中")
 
 
 def show_backtest():
