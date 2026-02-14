@@ -1235,6 +1235,91 @@ def show_scoring():
                 st.error(f"评分失败: {e}")
 
 
+def show_lstm_prediction():
+    """LSTM时序预测页面"""
+    st.markdown('<p class="main-header">🔮 LSTM时序预测</p>', unsafe_allow_html=True)
+    
+    # 导入LSTM预测器
+    try:
+        from lstm_predictor import LSTMPredictor
+        LSTM_AVAILABLE = True
+    except ImportError:
+        LSTM_AVAILABLE = False
+        st.warning("⚠️ LSTM预测模块不可用")
+        return
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("预测参数")
+        
+        symbol = st.text_input("股票代码", value="600519")
+        
+        st.info("""
+        **LSTM预测说明:**
+        - 使用LSTM神经网络进行时序预测
+        - 预测未来走势方向（上涨/下跌/震荡）
+        - 基于历史价格模式学习
+        """)
+        
+        predict_button = st.button("🔮 开始预测", type="primary")
+    
+    with col2:
+        if predict_button:
+            with st.spinner("正在加载数据..."):
+                # 获取数据
+                df = get_stock_data(symbol, days=200)
+                
+                if df is None or len(df) < 50:
+                    st.error(f"无法获取 {symbol} 的数据")
+                    return
+                
+                with st.spinner("正在训练模型..."):
+                    # 训练模型
+                    predictor = LSTMPredictor(sequence_length=20)
+                    train_result = predictor.train(df, symbol)
+                    
+                    if not train_result.get('success'):
+                        st.error(f"训练失败: {train_result.get('error')}")
+                        return
+                
+                with st.spinner("正在预测..."):
+                    # 预测
+                    pred = predictor.predict(df)
+                    
+                    # 显示结果
+                    st.success("✅ 预测完成!")
+                    
+                    # 预测结果
+                    col_a, col_b = st.columns(2)
+                    
+                    trend_emoji = "📈" if pred.trend == "UP" else "📉" if pred.trend == "DOWN" else "➡️"
+                    trend_color = "#28a745" if pred.trend == "UP" else "#dc3545" if pred.trend == "DOWN" else "#ffc107"
+                    
+                    col_a.markdown(f"""
+                    <div style="text-align: center; padding: 20px;">
+                        <h2 style="color: {trend_color};">{trend_emoji} {pred.trend}</h2>
+                        <p>预测方向</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    confidence_pct = pred.confidence * 100 if pred.confidence else 0
+                    col_b.markdown(f"""
+                    <div style="text-align: center; padding: 20px;">
+                        <h2>{confidence_pct:.1f}%</h2>
+                        <p>预测置信度</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # 预测说明
+                    if pred.trend == "UP":
+                        st.info("📈 预测模型认为该股票短期有上涨趋势")
+                    elif pred.trend == "DOWN":
+                        st.warning("📉 预测模型认为该股票短期有下跌风险")
+                    else:
+                        st.info("➡️ 预测模型认为该股票短期将震荡整理")
+
+
 def show_watchlist():
     """自选股管理页面"""
     st.markdown('<p class="main-header">⭐ 自选股管理</p>', unsafe_allow_html=True)
@@ -1371,7 +1456,7 @@ def show_sidebar():
     # 功能导航
     page = st.sidebar.radio(
         "功能导航",
-        ["选股", "自选股", "回测", "ML预测", "评分系统"]
+        ["选股", "自选股", "回测", "ML预测", "LSTM预测", "评分系统"]
     )
     
     st.sidebar.markdown("---")
@@ -1533,7 +1618,7 @@ def main():
         
         page = st.radio(
             "导航",
-            ["仪表盘", "选股", "自选股", "回测", "ML预测", "评分系统"]
+            ["仪表盘", "选股", "自选股", "回测", "ML预测", "LSTM预测", "评分系统"]
         )
         
         st.markdown("---")
@@ -1582,6 +1667,8 @@ def main():
         show_backtest()
     elif page == "ML预测":
         show_ml_prediction()
+    elif page == "LSTM预测":
+        show_lstm_prediction()
     elif page == "评分系统":
         show_scoring()
     
