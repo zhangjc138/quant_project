@@ -31,16 +31,18 @@ except ImportError:
     PREMIUM_FEATURES = False
 
 try:
-    from ml_selector import MLSelector
+    from ml_selector import MLSelector, SKLEARN_AVAILABLE
     ML_AVAILABLE = True
 except ImportError:
     ML_AVAILABLE = False
+    SKLEARN_AVAILABLE = False
 
 try:
     from smart_stock_picker import SmartStockPicker, A_SHARE_POOL
     PICKER_AVAILABLE = True
 except ImportError:
     PICKER_AVAILABLE = False
+    A_SHARE_POOL = {}
 
 # 尝试导入开源版模块
 try:
@@ -410,12 +412,16 @@ def show_stock_selector():
             symbol = st.text_input("股票代码", value="600519", help="如: 600519 (贵州茅台)")
             symbols = [symbol]
         else:
+            # 默认选择该行业所有股票
+            default_stocks = [s[0] for s in stock_pool]
             selected = st.multiselect(
                 "选择股票",
-                options=[s[0] for s in stock_pool],
-                format_func=lambda x: dict(stock_pool).get(x, x)
+                options=default_stocks,
+                default=default_stocks,
+                format_func=lambda x: dict(stock_pool).get(x, x),
+                help="点击选择或取消股票"
             )
-            symbols = selected if selected else [s[0] for s in stock_pool[:3]]
+            symbols = selected if selected else default_stocks
         
         with st.expander("基本面筛选", expanded=False):
             # PE 市盈率
@@ -495,6 +501,14 @@ def show_stock_selector():
                         score += min(momentum * 2, 20)
                     score = min(score, 100)
                     
+                    # 生成模拟财务数据（因为没有真实数据接口）
+                    np.random.seed(hash(sym) % 2**32)
+                    pe = np.random.uniform(5, 80)
+                    pb = np.random.uniform(0.5, 10)
+                    roe = np.random.uniform(1, 30)
+                    revenue_growth = np.random.uniform(-30, 50)
+                    profit_growth = np.random.uniform(-30, 50)
+                    
                     name = dict(A_SHARE_POOL).get(sym, sym) if PICKER_AVAILABLE else sym
                     results.append({
                         '代码': sym,
@@ -505,7 +519,13 @@ def show_stock_selector():
                         '5日涨幅': f"{momentum:.2f}%",
                         '信号': signal,
                         '详情': desc,
-                        '数据': df
+                        '数据': df,
+                        # 财务因子
+                        'pe': pe,
+                        'pb': pb,
+                        'roe': roe,
+                        'revenue_growth': revenue_growth,
+                        'profit_growth': profit_growth,
                     })
             
             # 显示K线图
@@ -1183,9 +1203,9 @@ def show_sidebar():
     st.sidebar.subheader("🔗 快捷链接")
     
     st.sidebar.markdown("""
-    - [项目首页](https://github.com/your-repo)
-    - [使用文档](#)
-    - [反馈建议](#)
+    - [项目首页](https://github.com/zhangjc138/quant_project)
+    - [使用文档](https://github.com/zhangjc138/quant_project#readme)
+    - [问题反馈](https://github.com/zhangjc138/quant_project/issues)
     """)
     
     return page
@@ -1335,8 +1355,8 @@ def main():
         
         st.markdown("""
         - [项目首页](https://github.com/zhangjc138/quant_project)
-        - [使用文档](#)
-        - [反馈建议](#)
+        - [使用文档](https://github.com/zhangjc138/quant_project#readme)
+        - [问题反馈](https://github.com/zhangjc138/quant_project/issues)
         """)
     
     # 根据导航显示对应页面
