@@ -559,7 +559,16 @@ def show_stock_selector():
                     revenue_growth = np.random.uniform(-30, 50)
                     profit_growth = np.random.uniform(-30, 50)
                     
-                    name = dict(A_SHARE_POOL).get(sym, sym) if PICKER_AVAILABLE else sym
+                    # 获取股票名称（优先使用行业映射，其次使用股票池）
+                    name = sym
+                    for code, stock_name in INDUSTRY_STOCKS.items():
+                        for c, n in stock_name:
+                            if c == sym:
+                                name = n
+                                break
+                    if PICKER_AVAILABLE:
+                        name = dict(A_SHARE_POOL).get(sym, name)
+                    
                     results.append({
                         '代码': sym,
                         '名称': name,
