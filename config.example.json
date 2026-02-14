@@ -1,0 +1,58 @@
+{
+  "email": {
+    "smtp_host": "smtp.qq.com",
+    "smtp_port": 465,
+    "username": "6315489@qq.com",
+    "password": "your_email_password_or_app_token",
+    "recipients": [
+      "6315489@qq.com",
+      "user@example.com"
+    ],
+    "sender_name": "Quant Signals"
+  },
+  "feishu": {
+    "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/your-webhook-id",
+    "mention_users": [
+      "ou_xxxxxxxxxxxxx"
+    ]
+  },
+  "rate_limit": {
+    "max_per_minute": 3,
+    "max_per_hour": 20,
+    "cooldown_seconds": 300
+  },
+  "scan": {
+    "angle_threshold_buy": 3.0,
+    "angle_threshold_sell": 0.0,
+    "rsi_oversold": 30,
+    "rsi_overbought": 70,
+    "require_rsi_oversold": true,
+    "require_macd_golden": true
+  },
+  "watchlist": {
+    "enabled": true,
+    "stocks": {
+      "600000": {"name": "浦发银行", "category": "银行", "enabled": true},
+      "600036": {"name": "招商银行", "category": "银行", "enabled": true},
+      "600016": {"name": "民生银行", "category": "银行", "enabled": true},
+      "600015": {"name": "华夏银行", "category": "银行", "enabled": true},
+      "600030": {"name": "中信证券", "category": "证券", "enabled": true},
+      "600012": {"name": "皖通高速", "category": "高速", "enabled": true},
+      "600033": {"name": "福建高速", "category": "高速", "enabled": true},
+      "600035": {"name": "宁沪高速", "category": "高速", "enabled": true},
+      "600009": {"name": "上海机场", "category": "机场", "enabled": true},
+      "600085": {"name": "同仁堂", "category": "医药", "enabled": true},
+      "600352": {"name": "山东黄金", "category": "黄金", "enabled": true}
+    }
+  },
+  "data": {
+    "source": "akshare",
+    "local_path": "./data",
+    "cache_path": "./cache"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "./logs/daily_signal.log",
+    "console": true
+  }
+}

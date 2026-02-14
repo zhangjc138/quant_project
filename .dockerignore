@@ -1,0 +1,69 @@
+# quant_project/.dockerignore
+# Docker构建时忽略的文件
+
+# Python缓存和虚拟环境
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+.venv/
+env/
+.ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# 测试和文档
+tests/
+docs/
+*.md
+!README.md
+
+# 数据文件（运行时挂载）
+data/
+logs/
+output/
+*.csv
+*.parquet
+*.db
+
+# 配置文件（运行时挂载）
+config.json
+config.yaml
+*.pem
+*.key
+
+# Docker文件
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 视频和媒体
+*.mp4
+*.avi
+*.mov
+*.srt
+video_*
+*.svg
+
+# 其他
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+trending_report.txt

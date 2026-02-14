@@ -38,6 +38,14 @@ except ImportError:
     NEW_INDICATORS_AVAILABLE = False
     print("警告: 高级技术指标模块不可用")
 
+# 尝试导入财务因子模块
+try:
+    from financial import get_stock_financials, filter_financials
+    FINANCIAL_AVAILABLE = True
+except ImportError:
+    FINANCIAL_AVAILABLE = False
+    print("警告: 财务因子模块不可用")
+
 
 @dataclass
 class StockSignal:
@@ -67,6 +75,12 @@ class StockSignal:
     update_time: str      # 更新时间
     # 行业板块
     industry: str = "未知"   # 所属行业
+    # 财务因子
+    pe: float = 0         # 市盈率
+    pb: float = 0         # 市净率
+    roe: float = 0        # 净资产收益率 (%)
+    revenue_growth: float = 0  # 营收增速 (%)
+    profit_growth: float = 0   # 净利润增速 (%)
 
 
 class TechnicalIndicator:
@@ -651,6 +665,25 @@ class StockSelector:
         # 股票名称
         name = self.watchlist.get(symbol, {}).get("name", symbol)
         
+        # 获取财务数据
+        pe = 0
+        pb = 0
+        roe = 0
+        revenue_growth = 0
+        profit_growth = 0
+        
+        if FINANCIAL_AVAILABLE:
+            try:
+                financial = get_stock_financials(symbol)
+                if financial:
+                    pe = financial.pe
+                    pb = financial.pb
+                    roe = financial.roe
+                    revenue_growth = financial.revenue_growth
+                    profit_growth = financial.profit_growth
+            except Exception as e:
+                print(f"获取财务数据失败: {symbol}, 错误: {e}")
+        
         result_signal = StockSignal(
             symbol=symbol,
             name=name,
@@ -673,6 +706,11 @@ class StockSelector:
             signal=signal,
             signal_desc=signal_desc,
             industry="未知",  # TODO: 接入行业数据
+            pe=pe,
+            pb=pb,
+            roe=roe,
+            revenue_growth=revenue_growth,
+            profit_growth=profit_growth,
             update_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         )
         

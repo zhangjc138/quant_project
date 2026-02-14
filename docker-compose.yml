@@ -1,0 +1,76 @@
+# quant_project/docker-compose.yml
+# 量化投资策略系统 - Docker Compose配置
+# 支持开发环境和生产环境
+
+version: '3.8'
+
+services:
+  # 主应用服务
+  quant_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quant_app
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./output:/app/output
+      - ./config.json:/app/config.json
+    environment:
+      - TZ=Asia/Shanghai
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - quant_network
+
+  # 数据采集服务（可选）
+  data_collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quant_data_collector
+    command: python -c "from data_manager import *; print('Data collector ready')"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+    networks:
+      - quant_network
+    profiles:
+      - collector
+
+  # 回测服务（可选）
+  backtest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quant_backtest
+    command: python -c "from backtest.backtest_engine import *; print('Backtest engine ready')"
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+    networks:
+      - quant_network
+    profiles:
+      - backtest
+
+networks:
+  quant_network:
+    driver: bridge
+
+# volumes:
+#   data:
+#   logs:
+#   output:

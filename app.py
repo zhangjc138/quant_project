@@ -344,13 +344,37 @@ def show_stock_selector():
         ])
         selected_industry = st.selectbox("行业板块", industry_options, help="选择行业进行筛选")
         
-        with st.expander("基本面筛选 (付费版)", expanded=False):
-            if PREMIUM_FEATURES:
-                pe_min = st.number_input("PE最小", value=0)
-                pe_max = st.number_input("PE最大", value=50)
-                min_score = st.slider("最低评分", 0, 100, 50)
-            else:
-                st.info("💡 付费版功能：基本面筛选需要付费版模块")
+        with st.expander("基本面筛选", expanded=False):
+            # PE 市盈率
+            col_pe1, col_pe2 = st.columns(2)
+            with col_pe1:
+                pe_min = st.number_input("PE最小", value=0, min_value=0, key="pe_min")
+            with col_pe2:
+                pe_max = st.number_input("PE最大", value=100, min_value=0, key="pe_max")
+            
+            # PB 市净率
+            col_pb1, col_pb2 = st.columns(2)
+            with col_pb1:
+                pb_min = st.number_input("PB最小", value=0, min_value=0, key="pb_min")
+            with col_pb2:
+                pb_max = st.number_input("PB最大", value=10, min_value=0, key="pb_max")
+            
+            # ROE 净资产收益率
+            min_roe = st.number_input("最小ROE (%)", value=0, min_value=0, max_value=100)
+            
+            # 营收增速
+            col_rev1, col_rev2 = st.columns(2)
+            with col_rev1:
+                rev_growth_min = st.number_input("最小营收增速 (%)", value=-50, key="rev_min")
+            with col_rev2:
+                rev_growth_max = st.number_input("最大营收增速 (%)", value=100, key="rev_max")
+            
+            # 净利润增速
+            col_pro1, col_pro2 = st.columns(2)
+            with col_pro1:
+                profit_growth_min = st.number_input("最小净利润增速 (%)", value=-50, key="profit_min")
+            with col_pro2:
+                profit_growth_max = st.number_input("最大净利润增速 (%)", value=100, key="profit_max")
         
         scan_button = st.button("🔍 开始选股", type="primary")
     
@@ -407,6 +431,27 @@ def show_stock_selector():
             # 显示结果表格
             if results:
                 st.subheader("选股结果")
+                
+                # 财务因子筛选
+                if 'pe_min' in dir() or 'pe_min' in locals():
+                    filtered_results = []
+                    for r in results:
+                        # 获取财务因子（模拟数据或真实数据）
+                        pe = r.get('pe', 0)
+                        pb = r.get('pb', 0)
+                        roe = r.get('roe', 0)
+                        revenue_growth = r.get('revenue_growth', 0)
+                        profit_growth = r.get('profit_growth', 0)
+                        
+                        # 筛选条件
+                        if (pe_min <= pe <= pe_max and 
+                            pb_min <= pb <= pb_max and 
+                            roe >= min_roe and
+                            rev_growth_min <= revenue_growth <= rev_growth_max and
+                            profit_growth_min <= profit_growth <= profit_growth_max):
+                            filtered_results.append(r)
+                    
+                    results = filtered_results
                 
                 # 格式化显示
                 display_df = pd.DataFrame([{

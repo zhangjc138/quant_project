@@ -39,6 +39,13 @@
 - **MACD金叉死叉**: 经典指标，趋势转折无忧
 - **ML涨跌预测**: 机器学习预测明日涨跌概率
 
+### 🔔 实时推送（付费功能）
+- **邮件推送**: SMTP协议，支持QQ邮箱、163邮箱等
+- **飞书Webhook**: 群机器人实时推送
+- **每日报告**: 收盘后自动扫描并发送BUY信号列表
+- **频率控制**: 智能去重，避免频繁打扰
+- **自定义阈值**: 可配置推送触发条件
+
 ### 📊 专业回测
 - **多策略组合**: MA20+RSI+MACD任意组合
 - **完整指标**: 夏普比率、最大回撤、胜率、盈亏比
@@ -102,13 +109,68 @@ print(f"夏普比率: {result.sharpe_ratio:.2f}")
 | MA20角度选股 | ✅ | ✅ |
 | RSI/MACD指标 | ✅ | ✅ |
 | 基础回测 | ✅ | ✅ |
+| **邮件推送** | ❌ | ✅ |
+| **飞书推送** | ❌ | ✅ |
+| **每日信号报告** | ❌ | ✅ |
+| 频率控制/去重 | ❌ | ✅ |
+| 自定义推送阈值 | ❌ | ✅ |
 | 多维度评分 | ❌ | ✅ |
 | ML涨跌预测 | ❌ | ✅ |
 | 基本面筛选 | ❌ | ✅ |
 | 智能选股导出 | ❌ | ✅ |
 | **Web界面** | ✅ | ✅ |
 
-## 🏆 为什么选择quant_project？
+### 方式二：命令行
+
+```bash
+# 安装依赖
+pip install -r requirements.txt
+
+# 扫描全部A股
+python main.py --scan all
+
+# 回测策略
+python main.py --backtest --symbol 600000
+```
+
+### 方式三：每日推送（付费功能）
+
+```bash
+# 安装推送依赖
+pip install pyyaml requests
+
+# 复制配置模板
+cp config.example.yaml config.yaml
+# 编辑 config.yaml 填入邮箱/SMTP/飞书配置
+
+# 运行每日扫描
+python daily_signal.py --config config.yaml
+
+# 设置定时任务（每日16:00执行）
+# crontab -e
+# 0 16 * * 1-5 cd /path/to/quant_project && python daily_signal.py -c config.yaml
+```
+
+### Python API
+
+```python
+from stock_strategy import StockSelector
+from stock_backtest import Backtester
+from notifier import NotificationManager
+
+# 快速选股
+selector = StockSelector()
+result = selector.get_signal("600000")
+print(f"MA20角度: {result.ma20_angle:.2f}°")
+print(f"信号: {result.signal}")
+
+# 启用推送功能（付费版）
+notifier = NotificationManager(config_path='config.yaml')
+selector.set_notifier(notifier)
+
+# 扫描时自动触发推送
+result = selector.get_signal("600000", enable_push=True)
+```
 
 1. **🔥 简单易用**: 无需复杂配置，5分钟上手
 2. **🚀 高效快速**: 多线程扫描，全市场30秒完成

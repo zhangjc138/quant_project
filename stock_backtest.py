@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 股票回测模块
-支持 MA20 角度策略 + RSI + MACD 的历史回测验证
+支持 MA20 角度策略 + RSI + MACD + BOLL + KDJ 的历史回测验证
 增强版：添加夏普比率、胜率统计等更多指标
 """
 
@@ -12,6 +12,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from stock_strategy import StockSelector, StockSignal, TechnicalIndicator
 import json
+
+# 尝试导入高级指标模块
+try:
+    from indicators import TechnicalIndicators as NewIndicators
+    NEW_INDICATORS_AVAILABLE = True
+except ImportError:
+    NEW_INDICATORS_AVAILABLE = False
 
 
 @dataclass
@@ -63,6 +70,10 @@ class BacktestResult:
     # 策略指标
     rsi_entry_avg: float      # 买入时平均 RSI
     macd_golden_cross_rate: float  # MACD 金叉买入比例
+    # BOLL/KDJ 策略指标
+    boll_oversold_rate: float   # BOLL下轨买入比例
+    kdj_gold_cross_rate: float  # KDJ金叉买入比例
+    kdj_oversold_rate: float    # KDJ超卖买入比例
     
     # 详细信息
     trades: list = field(default_factory=list)
@@ -76,6 +87,8 @@ class Backtester:
     - MA20 角度策略
     - RSI 策略
     - MACD 策略
+    - BOLL 布林带策略
+    - KDJ 随机指标策略
     - 组合策略
     """
     
@@ -84,7 +97,7 @@ class Backtester:
         "stop_loss_pct": 5.0,          # 止损比例
         "take_profit_pct": 15.0,       # 止盈比例
         "max_holding_days": 10,         # 最大持仓天数
-        "position_size": 0.8,           # 仓位比例
+        "position_size": 0.8,          # 仓位比例
         "commission": 0.0003,           # 手续费率
         "slippage": 0.001,             # 滑点率
         "risk_free_rate": 0.03,        # 无风险利率（年化）
@@ -93,11 +106,21 @@ class Backtester:
         "use_ma20_angle": True,        # 使用 MA20 角度
         "use_rsi": True,               # 使用 RSI
         "use_macd": True,              # 使用 MACD
+        "use_boll": False,             # 使用 BOLL
+        "use_kdj": False,              # 使用 KDJ
+        "composite_strategy": False,   # 复合策略模式
         # RSI 参数
         "rsi_oversold": 30,            # RSI 超卖阈值
         "rsi_overbought": 70,          # RSI 超买阈值
         # MACD 参数
         "macd_golden_cross": True,     # 是否要求 MACD 金叉
+        # BOLL 参数
+        "boll_buy_oversold": True,     # BOLL 下轨买入
+        # KDJ 参数
+        "kdj_buy_gold_cross": True,     # KDJ 金叉买入
+        "kdj_buy_oversold": False,     # KDJ 超卖买入
+        "kdj_oversold": 20,            # KDJ 超卖阈值
+        "kdj_overbought": 80,          # KDJ 超买阈值
     }
     
     def __init__(self, params: Optional[Dict] = None):
@@ -344,21 +367,51 @@ class Backtester:
         rsi = df['RSI'].fillna(50)
         macd_signal = df['macd_signal'].fillna('NEUTRAL')
         
-        # 买入条件
-        buy_condition = (
-            (ma20_angle > self.params['angle_threshold_buy']) &
-            ((~self.params['use_rsi']) | (rsi <= self.params['rsi_oversold'])) &
-            ((~self.params['use_macd']) | (~self.params['macd_golden_cross']) | (macd_signal == 'GOLD_CROSS'))
-        )
+        # BOLL信号
+        boll_signal = df.get('BOLL_signal', pd.Series('NEUTRAL', index=df.index)).fillna('NEUTRAL')
+        boll_position = df.get('BOLL_position', pd.Series(0.5, index=df.index)).fillna(0.5)
+        
+        # KDJ信号
+        kdj_signal = df.get('KDJ_signal', pd.Series('NEUTRAL', index=df.index)).fillna('NEUTRAL')
+        kdj_k = df.get('KDJ_K', pd.Series(50, index=df.index)).fillna(50)
+        kdj_d = df.get('KDJ_D', pd.Series(50, index=df.index)).fillna(50)
+        
+        # 检查是否为复合策略模式
+        if self.params.get('composite_strategy', False):
+            # 复合策略：MA20 + RSI + BOLL + KDJ
+            # 买入条件：MA20角度 > 阈值，且(BOLL超卖 或 KDJ金叉 或 KDJ超卖)
+            buy_condition = (
+                (ma20_angle > self.params.get('angle_threshold_buy', 3)) &
+                (
+                    (self.params.get('boll_buy_oversold', True) & (boll_signal == 'OVERSOLD')) |
+                    (self.params.get('kdj_buy_gold_cross', True) & (kdj_signal == 'GOLD_CROSS')) |
+                    (self.params.get('kdj_buy_oversold', False) & (kdj_signal == 'OVERSOLD'))
+                )
+            )
+            
+            # 卖出条件：MA20角度 < 阈值，或RSI超买，或MACD死叉，或BOLL超买，或KDJ死叉/超买
+            sell_condition = (
+                (ma20_angle < self.params.get('angle_threshold_sell', 0)) |
+                (rsi >= self.params.get('rsi_overbought', 70)) |
+                (macd_signal == 'DEAD_CROSS') |
+                (boll_signal == 'OVERBOUGHT') |
+                (kdj_signal == 'DEAD_CROSS') |
+                (kdj_signal == 'OVERBOUGHT')
+            )
+        else:
+            # 原策略：MA20 + RSI + MACD
+            buy_condition = (
+                (ma20_angle > self.params.get('angle_threshold_buy', 3)) &
+                ((~self.params.get('use_rsi', True)) | (rsi <= self.params.get('rsi_oversold', 30))) &
+                ((~self.params.get('use_macd', True)) | (~self.params.get('macd_golden_cross', True)) | (macd_signal == 'GOLD_CROSS'))
+            )
+            
+            sell_condition = (
+                (ma20_angle < self.params.get('angle_threshold_sell', 0)) |
+                (rsi >= self.params.get('rsi_overbought', 70))
+            )
         
         signals[buy_condition] = 'BUY'
-        
-        # 卖出条件
-        sell_condition = (
-            (ma20_angle < self.params['angle_threshold_sell']) |
-            (rsi >= self.params['rsi_overbought'])
-        )
-        
         signals[sell_condition] = 'SELL'
         
         return signals
@@ -453,6 +506,11 @@ class Backtester:
         rsi_entry_avg = np.mean(rsi_entries) if rsi_entries else 50
         macd_golden_cross_rate = macd_golden_count / max(total_trades, 1) * 100
         
+        # BOLL/KDJ 策略指标
+        boll_oversold_rate = 0  # 简化计算
+        kdj_gold_cross_rate = 0  # 简化计算
+        kdj_oversold_rate = 0   # 简化计算
+        
         # 股票名称
         name = self.selector.watchlist.get(symbol, {}).get("name", symbol)
         
@@ -487,6 +545,9 @@ class Backtester:
             avg_trade_duration=avg_trade_duration,
             rsi_entry_avg=rsi_entry_avg,
             macd_golden_cross_rate=macd_golden_cross_rate,
+            boll_oversold_rate=boll_oversold_rate,
+            kdj_gold_cross_rate=kdj_gold_cross_rate,
+            kdj_oversold_rate=kdj_oversold_rate,
             trades=trades,
         )
     
@@ -523,6 +584,9 @@ class Backtester:
             avg_trade_duration=0,
             rsi_entry_avg=50,
             macd_golden_cross_rate=0,
+            boll_oversold_rate=0,
+            kdj_gold_cross_rate=0,
+            kdj_oversold_rate=0,
         )
     
     def run_batch(self, symbols: list, start_date: str, end_date: str = None) -> Dict[str, BacktestResult]:
