@@ -648,18 +648,21 @@ def show_stock_selector():
                     hide_index=True
                 )
                 
-                # 添加到自选股按钮
-                st.subheader("⭐ 添加到自选股")
-                cols = st.columns(len(results))
-                for idx, r in enumerate(results):
-                    with cols[idx]:
-                        if st.button(f"➕ {r['代码']}", key=f"add_watch_{r['代码']}"):
-                            add_to_watchlist(r['代码'], r['名称'])
-                            st.success(f"已添加 {r['代码']} {r['名称']} 到自选股")
-                
                 # 信号统计
                 signal_counts = display_df['信号'].value_counts()
                 st.write("📊 信号统计:", signal_counts.to_dict())
+                
+                # 每行显示添加按钮
+                st.subheader("⭐ 一键加自选")
+                for r in results:
+                    col_info, col_btn = st.columns([4, 1])
+                    with col_info:
+                        signal_emoji = "🔴" if "卖出" in r['信号'] else "🟡" if "持有" in r['信号'] else "🟢"
+                        st.write(f"{signal_emoji} **{r['代码']}** {r['名称']} - 评分:{r['评分']} - {r['信号']}")
+                    with col_btn:
+                        if st.button(f"➕ 加自选", key=f"add_{r['代码']}"):
+                            add_to_watchlist(r['代码'], r['名称'])
+                            st.toast(f"✅ 已添加 {r['代码']} {r['名称']}")
 
 
 def show_backtest():
