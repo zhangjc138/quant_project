@@ -1374,7 +1374,7 @@ def show_sidebar():
     try:
         from stock_data import get_stock_daily
         test_df = get_stock_daily('600519', start_date='20260101', end_date='20260214')
-        if test_df is not None and len(test_df) > 30:
+        if test_df is not None and len(test_df) >= 20:
             data_status = "📈 真实数据 (akshare)"
         else:
             data_status = "📊 模拟数据"
@@ -1536,7 +1536,7 @@ def main():
         try:
             from stock_data import get_stock_daily
             test_df = get_stock_daily('600519', start_date='20260101', end_date='20260214')
-            if test_df is not None and len(test_df) > 30:
+            if test_df is not None and len(test_df) >= 20:
                 data_status = "📈 真实数据"
             else:
                 data_status = "📊 模拟数据"
