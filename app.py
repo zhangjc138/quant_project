@@ -527,7 +527,10 @@ def show_backtest():
         run_button = st.button("🚀 运行回测", type="primary")
     
     with col2:
-        if run_button:
+        if run_button or True:  # 始终显示结果区域
+            if not run_button:
+                st.info("👈 点击'运行回测'开始分析")
+            
             # 生成模拟数据
             df = generate_mock_data(symbol, days=1000)
             df = calculate_indicators(df)
@@ -554,24 +557,23 @@ def show_backtest():
                 signal = []
                 if use_ma20:
                     ma20_angle = row.get('ma20_angle', 0)
-                    if ma20_angle > 3:
+                    if ma20_angle > 2:  # 从3改为2，更容易触发
                         signal.append('MA20_BUY')
                 if use_rsi:
                     rsi = row.get('rsi', 50)
-                    if rsi < 35:
+                    if rsi < 40:  # 从35改为40，更容易触发
                         signal.append('RSI_BUY')
                 if use_macd:
-                    if row.get('macd_diff', 0) > row.get('macd_dea', 0) and \
-                       prev_row.get('macd_diff', 0) <= prev_row.get('macd_dea', 0):
+                    if row.get('macd_diff', 0) > row.get('macd_dea', 0):
                         signal.append('MACD_BUY')
                 
                 # 卖出信号
                 sell_signal = []
                 if use_ma20:
-                    if row.get('ma20_angle', 0) < 0:
+                    if row.get('ma20_angle', 0) < -1:  # 从0改为-1
                         sell_signal.append('MA20_SELL')
                 if use_rsi:
-                    if row.get('rsi', 50) > 70:
+                    if row.get('rsi', 50) > 65:  # 从70改为65
                         sell_signal.append('RSI_SELL')
                 
                 # 交易逻辑
