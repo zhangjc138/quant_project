@@ -1122,7 +1122,7 @@ def show_scoring():
             try:
                 # 使用评分系统
                 scoring = ScoringSystem()
-                result = scoring.calculate(df)
+                result = scoring.calculate(df, symbol)
                 
                 # 显示综合评分
                 st.subheader("🎯 综合评分")
@@ -1169,22 +1169,22 @@ def show_scoring():
                 scores = result.scores
                 
                 m1, m2, m3, m4, m5 = st.columns(5)
-                m1.metric("趋势强度", f"{scores.get('trend', 0):.1f}/25")
-                m2.metric("动量", f"{scores.get('momentum', 0):.1f}/25")
-                m3.metric("波动率", f"{scores.get('volatility', 0):.1f}/15")
-                m4.metric("RSI位置", f"{scores.get('rsi', 0):.1f}/20")
-                m5.metric("MACD状态", f"{scores.get('macd', 0):.1f}/15")
+                m1.metric("趋势强度", f"{scores.get('趋势强度', 0):.1f}/25")
+                m2.metric("动量", f"{scores.get('动量', 0):.1f}/25")
+                m3.metric("波动率", f"{scores.get('波动率', 0):.1f}/15")
+                m4.metric("RSI位置", f"{scores.get('RSI位置', 0):.1f}/20")
+                m5.metric("MACD状态", f"{scores.get('MACD状态', 0):.1f}/15")
                 
                 # 雷达图
                 st.subheader("🎯 评分雷达图")
                 
                 categories = ['趋势', '动量', '波动率', 'RSI', 'MACD']
                 values = [
-                    scores.get('trend', 0),
-                    scores.get('momentum', 0),
-                    scores.get('volatility', 0),
-                    scores.get('rsi', 0),
-                    scores.get('macd', 0)
+                    scores.get('趋势强度', 0),
+                    scores.get('动量', 0),
+                    scores.get('波动率', 0),
+                    scores.get('RSI位置', 0),
+                    scores.get('MACD状态', 0)
                 ]
                 max_vals = [25, 25, 15, 20, 15]
                 normalized = [v/m*100 if m > 0 else 0 for v, m in zip(values, max_vals)]
