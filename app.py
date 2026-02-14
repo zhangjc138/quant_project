@@ -1091,8 +1091,16 @@ def main():
     """主函数"""
     # 应用自定义样式
     try:
-        from theme import apply_custom_css
+        from theme import apply_custom_css, get_page_config
         st.markdown(apply_custom_css(), unsafe_allow_html=True)
+        
+        # 设置页面配置
+        st.set_page_config(
+            page_title="quant_project - 智能选股系统",
+            page_icon="📈",
+            layout="wide",
+            initial_sidebar_state="expanded"
+        )
     except ImportError:
         pass
     

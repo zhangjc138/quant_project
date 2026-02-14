@@ -8,17 +8,17 @@
 # 主题配置
 THEME_CONFIG = {
     "theme": "dark",
-    "primaryColor": "#6366f1",  # 靛蓝色
+    "primaryColor": "#3b82f6",  # 亮蓝色（更清晰）
     "secondaryColor": "#8b5cf6",  # 紫色
     "accentColor": "#06b6d4",  # 青色
     "successColor": "#22c55e",  # 绿色
     "warningColor": "#f59e0b",  # 橙色
     "errorColor": "#ef4444",  # 红色
     
-    # 背景色
-    "backgroundColor": "#0f172a",  # 深蓝色背景
-    "secondaryBackgroundColor": "#1e293b",  # 次要背景
-    "textColor": "#f1f5f9",  # 文本色
+    # 背景色 - 使用稍浅的深色，提高可读性
+    "backgroundColor": "#1e293b",  #  slate-800
+    "secondaryBackgroundColor": "#334155",  # slate-700
+    "textColor": "#f8fafc",  # slate-50（更白，更清晰）
     "font": "sans-serif",
 }
 
@@ -43,70 +43,41 @@ CHART_COLORS = {
 
 
 def apply_custom_css():
-    """应用自定义CSS样式"""
+    """应用自定义CSS样式 - 优化深色主题可读性"""
     css = """
     <style>
-    /* 主标题样式 */
+    /* 主标题样式 - 更清晰的颜色 */
     .main-header {
         font-size: 2rem;
         font-weight: 700;
-        color: #f1f5f9;
+        color: #f8fafc;
         margin-bottom: 1rem;
         padding: 0.5rem 0;
-        border-bottom: 2px solid #6366f1;
+        border-bottom: 2px solid #3b82f6;
     }
     
     /* 副标题样式 */
     .sub-header {
         font-size: 1.25rem;
         font-weight: 600;
-        color: #cbd5e1;
+        color: #e2e8f0;
         margin: 1rem 0;
     }
     
-    /* 买入信号样式 */
-    .signal-buy {
-        background-color: rgba(34, 197, 94, 0.2);
-        border: 1px solid #22c55e;
-        border-radius: 0.5rem;
-        padding: 0.5rem;
-        color: #22c55e;
-        font-weight: 600;
-    }
-    
-    /* 卖出信号样式 */
-    .signal-sell {
-        background-color: rgba(239, 68, 68, 0.2);
-        border: 1px solid #ef4444;
-        border-radius: 0.5rem;
-        padding: 0.5rem;
-        color: #ef4444;
-        font-weight: 600;
-    }
-    
-    /* 持有信号样式 */
-    .signal-hold {
-        background-color: rgba(245, 158, 11, 0.2);
-        border: 1px solid #f59e0b;
-        border-radius: 0.5rem;
-        padding: 0.5rem;
-        color: #f59e0b;
-        font-weight: 600;
-    }
-    
-    /* 指标卡片样式 */
+    /* 指标卡片 - 更亮的背景 */
     .metric-card {
-        background-color: #1e293b;
+        background-color: #334155;
         border-radius: 0.75rem;
         padding: 1rem;
         text-align: center;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        border: 1px solid #475569;
     }
     
     .metric-value {
         font-size: 1.5rem;
         font-weight: 700;
-        color: #f1f5f9;
+        color: #f8fafc;
     }
     
     .metric-label {
@@ -115,95 +86,145 @@ def apply_custom_css():
         margin-top: 0.25rem;
     }
     
-    /* 涨跌颜色 */
-    .price-up {
-        color: #22c55e;
-    }
-    
-    .price-down {
-        color: #ef4444;
-    }
-    
-    /* 侧边栏样式 */
+    /* 侧边栏样式 - 提高对比度 */
     [data-testid="stSidebar"] {
         background-color: #1e293b;
     }
     
-    /* 表格样式 */
-    [data-testid="stDataFrame"] {
-        border-radius: 0.5rem;
-        overflow: hidden;
-    }
-    
-    /* 按钮样式 */
-    .stButton > button {
-        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-        color: white;
-        border: none;
-        border-radius: 0.5rem;
-        font-weight: 600;
-        transition: all 0.3s ease;
-    }
-    
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
-    }
-    
-    /* 进度条样式 */
-    .stProgress > div > div {
-        background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
-    }
-    
-    /* 标签页样式 */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 0.5rem;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        background-color: #1e293b;
-        border-radius: 0.5rem 0.5rem 0 0;
-        padding: 0.5rem 1rem;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background-color: #6366f1;
+    /* 侧边栏文字更亮 */
+    [data-testid="stSidebar"] .stMarkdown,
+    [data-testid="stSidebar"] .stText,
+    [data-testid="stSidebar"] label {
+        color: #e2e8f0 !important;
     }
     
     /* 展开框样式 */
     [data-testid="stExpander"] {
-        background-color: #1e293b;
+        background-color: #334155;
         border-radius: 0.5rem;
-        border: 1px solid #334155;
+        border: 1px solid #475569;
+    }
+    
+    /* 输入框样式 */
+    .stTextInput > div > div > input {
+        background-color: #1e293b;
+        color: #f8fafc;
+        border-color: #475569;
     }
     
     /* 选择框样式 */
     .stSelectbox > div > div {
         background-color: #1e293b;
+        color: #f8fafc;
         border-color: #475569;
     }
     
     /* 数字输入框样式 */
     .stNumberInput > div > div {
         background-color: #1e293b;
+        color: #f8fafc;
         border-color: #475569;
+    }
+    
+    /* 下拉框选项文字 */
+    div[data-baseweb="select"] > div {
+        background-color: #1e293b;
+        color: #f8fafc;
+    }
+    
+    /* 表格样式 */
+    [data-testid="stDataFrame"] {
+        background-color: #1e293b;
+        border-radius: 0.5rem;
+        overflow: hidden;
+        border: 1px solid #475569;
+    }
+    
+    /* 表格文字 */
+    .stDataFrame td, .stDataFrame th {
+        color: #e2e8f0 !important;
+        background-color: #1e293b !important;
     }
     
     /* 滑块样式 */
     .stSlider [data-testid="stSliderThumb"] {
-        background-color: #6366f1;
+        background-color: #3b82f6;
     }
     
     /* 提示框样式 */
     .stAlert {
-        background-color: #1e293b;
+        background-color: #334155;
         border-color: #475569;
-        color: #f1f5f9;
+        color: #f8fafc;
+    }
+    
+    /* 单选按钮文字 */
+    .stRadio label {
+        color: #e2e8f0 !important;
+    }
+    
+    /* 复选框文字 */
+    .stCheckbox label {
+        color: #e2e8f0 !important;
+    }
+    
+    /* 进度条样式 */
+    .stProgress > div > div {
+        background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);
+    }
+    
+    /* 标签页文字 */
+    .stTabs [data-baseweb="tab-list"] button {
+        color: #94a3b8;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        color: #f8fafc !important;
+        background-color: #3b82f6 !important;
+    }
+    
+    /* 买入信号样式 - 清晰 */
+    .signal-buy {
+        background-color: rgba(34, 197, 94, 0.25);
+        border: 1px solid #22c55e;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+        color: #4ade80;
+        font-weight: 600;
+    }
+    
+    /* 卖出信号样式 */
+    .signal-sell {
+        background-color: rgba(239, 68, 68, 0.25);
+        border: 1px solid #ef4444;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+        color: #f87171;
+        font-weight: 600;
+    }
+    
+    /* 持有信号样式 */
+    .signal-hold {
+        background-color: rgba(245, 158, 11, 0.25);
+        border: 1px solid #f59e0b;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+        color: #fbbf24;
+        font-weight: 600;
+    }
+    
+    /* 涨跌颜色 */
+    .price-up {
+        color: #4ade80;
+    }
+    
+    .price-down {
+        color: #f87171;
     }
     
     /* 股票代码链接 */
     .stock-link {
-        color: #6366f1;
+        color: #60a5fa;
         text-decoration: none;
         font-weight: 600;
     }
@@ -219,16 +240,8 @@ def apply_custom_css():
         border-radius: 9999px;
         font-size: 0.75rem;
         font-weight: 500;
-        background-color: #334155;
-        color: #cbd5e1;
-    }
-    
-    /* 统计卡片网格 */
-    .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 1rem;
-        margin: 1rem 0;
+        background-color: #475569;
+        color: #e2e8f0;
     }
     
     /* 信号指示器 */
@@ -239,14 +252,7 @@ def apply_custom_css():
         padding: 0.5rem 1rem;
         border-radius: 9999px;
         font-weight: 600;
-    }
-    
-    .signal-indicator::before {
-        content: '';
-        width: 0.5rem;
-        height: 0.5rem;
-        border-radius: 50%;
-        background-color: currentColor;
+        color: #f8fafc;
     }
     
     /* 时间戳样式 */
@@ -254,18 +260,45 @@ def apply_custom_css():
         font-size: 0.75rem;
         color: #64748b;
     }
+    
+    /* 分隔线颜色 */
+    hr {
+        border-color: #475569;
+    }
+    
+    /* Streamlit markdown文字 */
+    .stMarkdown p, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+        color: #e2e8f0 !important;
+    }
+    
+    /* DataFrame表头更亮 */
+    [data-testid="stDataFrame"] th {
+        background-color: #334155 !important;
+        color: #f8fafc !important;
+    }
+    
+    /* DataFrame单元格 */
+    [data-testid="stDataFrame"] td {
+        background-color: #1e293b !important;
+        color: #e2e8f0 !important;
+    }
     </style>
     """
     return css
 
 
 def get_page_config():
-    """获取Streamlit页面配置"""
+    """获取Streamlit页面配置 - 优化深色主题"""
     return {
         "page_title": "quant_project - 智能选股系统",
         "page_icon": "📈",
         "layout": "wide",
         "initial_sidebar_state": "expanded",
+        "menu_items": {
+            "Get Help": "https://github.com/zhangjc138/quant_project",
+            "Report a bug": "https://github.com/zhangjc138/quant_project/issues",
+            "About": "quant_project v1.2.0 - 开源量化选股工具"
+        }
     }
 
 
