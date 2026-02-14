@@ -652,28 +652,48 @@ def show_stock_selector():
                 signal_counts = display_df['信号'].value_counts()
                 st.write("📊 信号统计:", signal_counts.to_dict())
                 
-                # 选股结果明细（带添加按钮）
-                st.subheader("⭐ 操作")
+                # 选股结果 - 使用data_editor合并操作列
+                st.subheader("📊 选股结果")
+                
+                # 准备数据
+                table_data = []
                 for r in results:
-                    c1, c2, c3, c4, c5, c6 = st.columns([1, 2, 1, 1, 1, 1])
                     signal_emoji = "🔴" if "卖出" in r['信号'] else "🟡" if "持有" in r['信号'] else "🟢"
-                    with c1:
-                        st.write(f"**{r['代码']}**")
-                    with c2:
-                        st.write(r['名称'])
-                    with c3:
-                        st.write(f"评分:{r['评分']}")
-                    with c4:
-                        st.write(f"MA20:{r['MA20角度']:.1f}°")
-                    with c5:
-                        st.write(f"{signal_emoji} {r['信号']}")
-                    with c6:
-                        if st.button(f"➕ 自选", key=f"add_{r['代码']}_{r['名称']}"):
-                            if add_to_watchlist(r['代码'], r['名称']):
-                                st.success(f"✅ 已添加 {r['代码']} {r['名称']}")
-                                st.rerun()
-                            else:
-                                st.warning(f"⚠️ {r['代码']} 已在自选股中")
+                    table_data.append({
+                        "代码": r['代码'],
+                        "名称": r['名称'],
+                        "评分": r['评分'],
+                        "MA20角度": f"{r['MA20角度']:.1f}°",
+                        "RSI": r['RSI'],
+                        "5日涨幅": r['5日涨幅'],
+                        "信号": f"{signal_emoji} {r['信号']}",
+                        "➕加自选": False
+                    })
+                
+                # 使用data_editor显示可编辑表格
+                edited = st.data_editor(
+                    table_data,
+                    hide_index=True,
+                    use_container_width=True,
+                    disabled=["代码", "名称", "评分", "MA20角度", "RSI", "5日涨幅", "信号"],
+                    column_config={
+                        "➕加自选": st.column_config.CheckboxColumn(
+                            "➕加自选",
+                            help="勾选添加到自选股",
+                            default=False,
+                        )
+                    }
+                )
+                
+                # 处理勾选
+                for idx, row in enumerate(edited):
+                    if row["➕加自选"]:
+                        sym = table_data[idx]["代码"]
+                        name = table_data[idx]["名称"]
+                        if add_to_watchlist(sym, name):
+                            st.success(f"✅ 已添加 {sym} {name}")
+                        else:
+                            st.warning(f"⚠️ {sym} 已在自选股中")
 
 
 def show_backtest():
