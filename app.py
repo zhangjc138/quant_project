@@ -1107,7 +1107,7 @@ def show_ml_prediction():
                 
                 # 特征值
                 st.subheader("📊 当前特征值")
-                features = pred.get('features', {})
+                features = pred.feature_importance if hasattr(pred, 'feature_importance') else {}
                 if features:
                     feat_df = pd.DataFrame([
                         {'特征': k, '值': f"{v:.4f}"} 
