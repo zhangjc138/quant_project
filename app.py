@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
     from scoring_system import ScoringSystem, ScoreResult, SignalLevel, print_score_result
     PREMIUM_FEATURES = True
-except ImportError as e:
+except ImportError:
     PREMIUM_FEATURES = False
 
 try:
@@ -701,9 +701,9 @@ def show_ml_prediction():
     """ML预测页面"""
     st.markdown('<p class="main-header">🤖 ML预测</p>', unsafe_allow_html=True)
     
-    if not ML_AVAILABLE:
-        st.warning("⚠️ ML模块不可用，请安装scikit-learn: pip install scikit-learn")
-        st.info("💡 付费版专属功能：需要付费版许可证")
+    if not SKLEARN_AVAILABLE:
+        st.warning("⚠️ 请安装 scikit-learn: `pip install scikit-learn`")
+        st.info("📦 安装后即可使用 ML 预测功能")
         return
     
     col1, col2 = st.columns([1, 2])
@@ -715,8 +715,12 @@ def show_ml_prediction():
         
         model_type = st.selectbox(
             "模型类型",
-            ['random_forest', 'logistic'],
-            format_func=lambda x: '随机森林' if x == 'random_forest' else '逻辑回归'
+            ['random_forest', 'gradient_boosting', 'logistic'],
+            format_func=lambda x: {
+                'random_forest': '🌲 随机森林',
+                'gradient_boosting': '📈 梯度提升',
+                'logistic': '📊 逻辑回归'
+            }.get(x, x)
         )
         
         train_button = st.button("📊 训练模型", type="primary")
@@ -724,13 +728,100 @@ def show_ml_prediction():
         
         st.info("""
         **特征说明:**
-        - MA20角度: 趋势强度
-        - RSI: 相对强弱
-        - MACD差值: 趋势变化
-        - 成交量变化: 市场活跃度
-        - 价格动量: 短期走势
+        - MA5/MA10/MA20: 移动平均线
+        - RSI: 相对强弱指标
+        - MACD: 趋势变化
+        - 动量: 短期走势强度
         - 波动率: 风险水平
         """)
+    
+    with col2:
+        if train_button:
+            # 生成训练数据
+            df = generate_mock_data(symbol, days=500)
+            
+            try:
+                # 训练模型
+                selector = MLSelector(model_type=model_type)
+                result = selector.train(df, verbose=True)
+                
+                if result.get('success'):
+                    st.success("✅ 模型训练完成!")
+                    st.metric("模型准确率", f"{result['accuracy']:.1%}")
+                    
+                    # 特征重要性
+                    if result.get('feature_importance'):
+                        st.subheader("📊 特征重要性")
+                        importance_df = pd.DataFrame([
+                            {'特征': k, '重要性': v} 
+                            for k, v in result['feature_importance'].items()
+                        ]).sort_values('重要性', ascending=True)
+                        
+                        fig = px.barh(
+                            importance_df, 
+                            x='重要性', 
+                            y='特征',
+                            title='特征重要性',
+                            template='plotly_dark'
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.error(f"训练失败: {result.get('error')}")
+                    
+            except Exception as e:
+                st.error(f"训练失败: {e}")
+        
+        if predict_button:
+            df = generate_mock_data(symbol, days=200)
+            
+            try:
+                selector = MLSelector(model_type=model_type)
+                result = selector.train(df, verbose=False)
+                
+                if result.get('success'):
+                    pred = selector.predict(df)
+                    
+                    st.subheader("🔮 预测结果")
+                    
+                    # 信号卡片
+                    c1, c2, c3 = st.columns(3)
+                    signal_emoji = "📈" if pred.signal == "UP" else "📉" if pred.signal == "DOWN" else "➡️"
+                    c1.metric("预测信号", f"{signal_emoji} {pred.signal}")
+                    c2.metric("上涨概率", f"{pred.up_probability:.1%}")
+                    c3.metric("置信度", f"{pred.confidence:.1%}")
+                    
+                    # 概率条
+                    st.subheader("📊 概率分布")
+                    prob_df = pd.DataFrame({
+                        '方向': ['上涨 📈', '下跌 📉'],
+                        '概率': [pred.up_probability, pred.down_probability]
+                    })
+                    
+                    fig = px.bar(
+                        prob_df,
+                        x='方向',
+                        y='概率',
+                        color='方向',
+                        color_discrete_map={'上涨 📈': '#22c55e', '下跌 📉': '#ef4444'},
+                        template='plotly_dark',
+                        range_y=[0, 1]
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # 特征重要性
+                    if pred.feature_importance:
+                        st.subheader("📈 特征重要性")
+                        imp_df = pd.DataFrame([
+                            {'特征': k, '重要性': v}
+                            for k, v in sorted(pred.feature_importance.items(), 
+                                              key=lambda x: x[1], reverse=True)[:5]
+                        ])
+                        st.dataframe(imp_df, use_container_width=True)
+                else:
+                    st.error(f"预测失败: {result.get('error')}")
+                    
+            except Exception as e:
+                st.error(f"预测失败: {e}")
     
     with col2:
         if train_button:
