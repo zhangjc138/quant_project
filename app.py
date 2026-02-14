@@ -731,6 +731,9 @@ def show_backtest():
             trades = []
             equity_curve = []
             
+            # 计算启用的策略数量
+            strategy_count = sum([use_ma20, use_rsi, use_macd])
+            
             for i in range(20, len(df)):  # 从20天开始
                 row = df.iloc[i]
                 prev_row = df.iloc[i-1] if i > 0 else row
@@ -761,8 +764,9 @@ def show_backtest():
                         if macd_diff > macd_dea:
                             buy_score += 20
                 
-                # 买入条件
-                if buy_score >= 50 and position == 0:
+                # 买入条件 - 根据策略数量调整阈值
+                buy_threshold = 25 if strategy_count == 1 else 50
+                if buy_score >= buy_threshold and position == 0:
                     price = row['close']
                     shares = int(cash / price * 0.8)
                     cost = shares * price
@@ -795,8 +799,9 @@ def show_backtest():
                         elif rsi > 55:
                             sell_score += 15
                 
-                # 卖出条件
-                if sell_score >= 50 and position == 1:
+                # 卖出条件 - 根据策略数量调整阈值
+                sell_threshold = 25 if strategy_count == 1 else 50
+                if sell_score >= sell_threshold and position == 1:
                     price = row['close']
                     cash += shares * price
                     trades.append({
