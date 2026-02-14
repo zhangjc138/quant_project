@@ -141,25 +141,46 @@ def apply_custom_css():
         color: #f8fafc !important;
     }
     
-    /* 输入框样式 */
+    /* 输入框样式 - 更醒目 */
     .stTextInput > div > div > input {
-        background-color: #1e293b;
-        color: #f8fafc;
-        border-color: #475569;
+        background-color: #475569 !important;
+        color: #f8fafc !important;
+        border-color: #64748b !important;
+        border-width: 2px !important;
+    }
+    
+    /* 输入框标签 */
+    .stTextInput label {
+        color: #f8fafc !important;
+        font-weight: 600 !important;
     }
     
     /* 选择框样式 */
     .stSelectbox > div > div {
-        background-color: #1e293b;
-        color: #f8fafc;
-        border-color: #475569;
+        background-color: #475569 !important;
+        color: #f8fafc !important;
+        border-color: #64748b !important;
+        border-width: 2px !important;
     }
     
-    /* 数字输入框样式 */
+    /* 选择框标签 */
+    .stSelectbox label {
+        color: #f8fafc !important;
+        font-weight: 600 !important;
+    }
+    
+    /* 数字输入框样式 - 更醒目 */
     .stNumberInput > div > div {
-        background-color: #1e293b;
-        color: #f8fafc;
-        border-color: #475569;
+        background-color: #475569 !important;
+        color: #f8fafc !important;
+        border-color: #64748b !important;
+        border-width: 2px !important;
+    }
+    
+    /* 数字输入框的标签 */
+    .stNumberInput label {
+        color: #f8fafc !important;
+        font-weight: 600 !important;
     }
     
     /* 下拉框选项文字 */
