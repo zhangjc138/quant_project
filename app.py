@@ -169,7 +169,7 @@ def generate_mock_data(symbol, days=200):
 
 def get_stock_data(symbol: str, days: int = 365):
     """
-    获取股票数据（仅真实数据，失败返回None）
+    获取股票数据（优先使用缓存）
     
     Args:
         symbol: 股票代码
@@ -179,12 +179,19 @@ def get_stock_data(symbol: str, days: int = 365):
         DataFrame: 股票数据，失败返回None
     """
     try:
+        # 优先使用缓存管理器
+        from data_manager import get_stock_data_cached
+        df = get_stock_data_cached(symbol, days)
+        if df is not None and len(df) >= 30:
+            return df
+        
+        # 备用：直接获取
         from stock_data import get_stock_daily
         df = get_stock_daily(symbol)
         if df is not None and len(df) >= 30:
             return df.tail(days)
     except Exception as e:
-        print(f"获取真实数据失败: {e}")
+        print(f"获取数据失败: {e}")
     
     # 不再使用模拟数据，直接返回None
     return None

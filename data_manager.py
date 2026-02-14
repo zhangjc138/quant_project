@@ -1,358 +1,223 @@
 #!/usr/bin/env python3
 """
-数据管理模块
-- akshare 获取股票/期货数据
-- 本地 CSV 存储
-- 统一的数据接口
+股票数据管理器
+
+功能：
+- 本地缓存历史数据
+- 增量更新（只获取新数据）
+- 多数据源支持（akshare + baostock）
 """
 
 import os
 import pandas as pd
 import numpy as np
-import akshare as ak
 from datetime import datetime, timedelta
-from typing import Optional, Union, Tuple
-import logging
+from typing import Optional, Dict, List
+import warnings
+warnings.filterwarnings('ignore')
 
-# 配置日志
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# 数据目录
-DATA_DIR = "data"
+# 数据存储目录
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'stocks')
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
-def get_data_dir() -> str:
-    """获取数据目录"""
-    return DATA_DIR
+def get_stock_file(symbol: str) -> str:
+    """获取股票数据文件路径"""
+    return os.path.join(DATA_DIR, f"{symbol}.csv")
 
 
-def get_file_path(symbol: str, market: str = "stock", timeframe: str = "daily") -> str:
-    """
-    生成数据文件名
-    
-    Args:
-        symbol: 合约代码
-        market: 市场类型 (stock/futures)
-        timeframe: 时间周期 (daily/minute)
-        
-    Returns:
-        str: 文件路径
-    """
-    return os.path.join(get_data_dir(), f"{market}_{symbol}_{timeframe}.csv")
-
-
-# ==================== 股票数据 ====================
-
-def load_stock_daily(symbol: str, start_date: str = None, end_date: str = None) -> Optional[pd.DataFrame]:
-    """
-    加载股票日线数据
-    
-    Args:
-        symbol: 股票代码 (如 600000)
-        start_date: 开始日期 YYYY-MM-DD
-        end_date: 结束日期 YYYY-MM-DD
-        
-    Returns:
-        DataFrame 或 None
-    """
-    filepath = get_file_path(symbol, "stock", "daily")
-    
-    # 检查本地缓存
-    if os.path.exists(filepath):
+def load_local_data(symbol: str) -> Optional[pd.DataFrame]:
+    """加载本地缓存数据"""
+    file_path = get_stock_file(symbol)
+    if os.path.exists(file_path):
         try:
-            df = pd.read_csv(filepath)
-            df['date'] = pd.to_datetime(df['date'])
-            df.set_index('date', inplace=True)
-            
-            # 筛选日期范围
-            if start_date:
-                df = df[df.index >= pd.to_datetime(start_date)]
-            if end_date:
-                df = df[df.index <= pd.to_datetime(end_date)]
-            
+            df = pd.read_csv(file_path, index_col=0, parse_dates=True)
             return df
         except Exception as e:
-            logger.warning(f"加载本地数据失败: {e}")
-    
+            print(f"加载本地数据失败 {symbol}: {e}")
     return None
 
 
-def fetch_stock_daily(symbol: str, start_date: str = None, end_date: str = None, 
-                      save_local: bool = True) -> Optional[pd.DataFrame]:
-    """
-    获取股票日线数据（自动缓存）
-    
-    Args:
-        symbol: 股票代码 (如 600000)
-        start_date: 开始日期
-        end_date: 结束日期
-        save_local: 是否保存到本地
-        
-    Returns:
-        DataFrame 或 None
-    """
-    # 确定日期范围
-    if end_date is None:
-        end_date = datetime.now().strftime("%Y%m%d")
-    if start_date is None:
-        start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
-    
+def save_local_data(symbol: str, df: pd.DataFrame):
+    """保存数据到本地"""
+    file_path = get_stock_file(symbol)
     try:
-        # 转换代码格式
-        if symbol.startswith("6"):
-            symbol_ak = "sh" + symbol
-        else:
-            symbol_ak = "sz" + symbol
-        
-        # 获取数据
-        df = ak.stock_zh_a_hist(
-            symbol=symbol_ak,
-            period="daily",
-            start_date=start_date,
-            end_date=end_date,
-            adjust="qfq"
-        )
-        
-        if df is None or df.empty:
-            logger.warning(f"未获取到数据: {symbol}")
-            return None
-        
-        # 统一格式
-        df = df.rename(columns={
-            '日期': 'date',
-            '开盘': 'open',
-            '收盘': 'close',
-            '最高': 'high',
-            '最低': 'low',
-            '成交量': 'volume',
-            '成交额': 'amount',
-            '振幅': 'amplitude',
-            '涨跌幅': 'change_pct',
-            '涨跌额': 'change',
-            '换手率': 'turnover'
-        })
-        
-        df['date'] = pd.to_datetime(df['date'])
-        df.set_index('date', inplace=True)
-        df.sort_index(inplace=True)
-        
-        # 计算 MA20
-        df['MA20'] = df['close'].rolling(window=20).mean()
-        
-        # 保存到本地
-        if save_local:
-            filepath = get_file_path(symbol, "stock", "daily")
-            df.to_csv(filepath)
-            logger.info(f"数据已保存: {filepath}")
-        
-        return df
-        
+        df.to_csv(file_path)
+        print(f"✅ 数据已缓存: {symbol} ({len(df)}条)")
     except Exception as e:
-        logger.error(f"获取股票数据失败 {symbol}: {e}")
+        print(f"保存本地数据失败 {symbol}: {e}")
+
+
+def fetch_new_data(symbol: str, days: int = 365) -> Optional[pd.DataFrame]:
+    """从网络获取新数据"""
+    try:
+        from stock_data import get_stock_daily
+        df = get_stock_daily(symbol)
+        return df
+    except Exception as e:
+        print(f"获取网络数据失败 {symbol}: {e}")
         return None
 
 
-def get_stock_ma20_angle(symbol: str) -> Tuple[float, float, float]:
+def get_stock_data_cached(symbol: str, days: int = 365, force_refresh: bool = False) -> Optional[pd.DataFrame]:
     """
-    获取股票 MA20 角度（便捷函数）
+    获取股票数据（带缓存）
+    
+    策略：
+    1. 先尝试加载本地数据
+    2. 如果本地数据超过7天没更新，则增量更新
+    3. 如果本地数据不存在，则完整下载
     
     Args:
         symbol: 股票代码
-        
-    Returns:
-        Tuple[MA20, MA20_angle, close_price]
-    """
-    df = fetch_stock_daily(symbol)
+        days: 需要的天数
+        force_refresh: 是否强制刷新
     
-    if df is None or len(df) < 25:
-        return 0.0, 0.0, 0.0
-    
-    # 取最近 20 个 MA20 值
-    ma20_series = df['MA20'].dropna().tail(20)
-    if len(ma20_series) < 20:
-        return 0.0, 0.0, 0.0
-    
-    # 计算角度
-    x = np.arange(len(ma20_series))
-    y = ma20_series.values
-    
-    slope = np.cov(x, y)[0, 1] / np.var(x)
-    angle = np.degrees(np.arctan(slope / ma20_series.mean() * 100))
-    
-    return df['MA20'].iloc[-1], angle, df['close'].iloc[-1]
-
-
-def get_realtime_price(symbol: str) -> Optional[dict]:
-    """
-    获取实时行情
-    
-    Args:
-        symbol: 股票代码
-        
-    Returns:
-        dict 或 None
-    """
-    try:
-        # 转换代码格式
-        if symbol.startswith("6"):
-            symbol_ak = "sh" + symbol
-        else:
-            symbol_ak = "sz" + symbol
-        
-        df = ak.stock_zh_a实时行情_阿里(symbol=symbol_ak)
-        
-        if df is None or df.empty:
-            return None
-        
-        latest = df.iloc[0]
-        
-        return {
-            'symbol': symbol,
-            'name': latest.get('名称', symbol),
-            'price': float(latest.get('最新价', 0)),
-            'open': float(latest.get('今开', 0)),
-            'high': float(latest.get('最高', 0)),
-            'low': float(latest.get('最低', 0)),
-            'volume': float(latest.get('成交量', 0)),
-            'amount': float(latest.get('成交额', 0)),
-            'change_pct': float(latest.get('涨跌幅', 0)),
-        }
-        
-    except Exception as e:
-        logger.error(f"获取实时行情失败 {symbol}: {e}")
-        return None
-
-
-# ==================== 期货数据 ====================
-
-def fetch_futures_daily(symbol: str, start_date: str = None, end_date: str = None) -> Optional[pd.DataFrame]:
-    """
-    获取期货日线数据
-    
-    Args:
-        symbol: 合约代码 (如 IF2006)
-        start_date: 开始日期
-        end_date: 结束日期
-        
     Returns:
         DataFrame 或 None
     """
-    # 确定日期范围
-    if end_date is None:
-        end_date = datetime.now().strftime("%Y%m%d")
-    if start_date is None:
-        start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
+    local_df = load_local_data(symbol)
     
-    try:
-        # 中金所股指期货
-        if symbol.startswith("IF"):
-            df = ak.futures_zh_daily_sina(symbol=symbol)
-        # 其他期货
-        else:
-            df = ak.futures_zh_index_sina(symbol=symbol)
-        
-        if df is None or df.empty:
-            return None
-        
-        # 统一格式
-        df = df.rename(columns={
-            '日期': 'date',
-            '开盘': 'open',
-            '收盘': 'close',
-            '最高': 'high',
-            '最低': 'low',
-            '成交量': 'volume',
-            '持仓量': 'open_interest'
-        })
-        
-        df['date'] = pd.to_datetime(df['date'])
-        df.set_index('date', inplace=True)
-        df.sort_index(inplace=True)
-        
-        return df
-        
-    except Exception as e:
-        logger.error(f"获取期货数据失败 {symbol}: {e}")
+    # 情况1: 强制刷新
+    if force_refresh:
+        print(f"🔄 强制刷新 {symbol}...")
+        df = fetch_new_data(symbol, days)
+        if df is not None and len(df) > 0:
+            save_local_data(symbol, df)
+            return df.tail(days)
+        return local_df
+    
+    # 情况2: 本地无数据
+    if local_df is None or len(local_df) == 0:
+        print(f"📥 首次下载 {symbol}...")
+        df = fetch_new_data(symbol, days)
+        if df is not None and len(df) > 0:
+            save_local_data(symbol, df)
+            return df.tail(days)
         return None
+    
+    # 情况3: 检查是否需要增量更新
+    last_date = local_df.index[-1]
+    today = datetime.now()
+    days_since_update = (today - last_date).days
+    
+    if days_since_update > 7:
+        print(f"🔄 增量更新 {symbol} (距上次{days_since_update}天)...")
+        df = fetch_new_data(symbol, days)
+        if df is not None and len(df) > 0:
+            # 合并数据并去重
+            combined = pd.concat([local_df, df])
+            combined = combined[~combined.index.duplicated(keep='last')]
+            combined = combined.sort_index()
+            save_local_data(symbol, combined)
+            return combined.tail(days)
+        return local_df.tail(days)
+    
+    # 情况4: 使用本地数据
+    print(f"📂 使用缓存 {symbol} ({len(local_df)}条, 更新于{last_date.strftime('%Y-%m-%d')})")
+    return local_df.tail(days)
 
 
-# ==================== 辅助函数 ====================
-
-def merge_stock_data(symbols: list, start_date: str = None, end_date: str = None) -> dict:
+def batch_get_stocks(symbols: List[str], days: int = 365) -> Dict[str, pd.DataFrame]:
     """
-    合并多只股票数据
+    批量获取多只股票数据
     
     Args:
         symbols: 股票代码列表
-        start_date: 开始日期
-        end_date: 结束日期
-        
+        days: 天数
+    
     Returns:
         dict: {symbol: DataFrame}
     """
-    data = {}
-    
-    for symbol in symbols:
-        df = fetch_stock_daily(symbol, start_date, end_date)
+    results = {}
+    for sym in symbols:
+        df = get_stock_data_cached(sym, days)
         if df is not None:
-            data[symbol] = df
-    
-    return data
+            results[sym] = df
+    return results
 
 
-def calculate_ma20_angle(ma20_series: pd.Series) -> float:
+def update_all_cached_data(symbols: List[str] = None):
     """
-    计算 MA20 角度
+    更新所有缓存数据
     
     Args:
-        ma20_series: MA20 序列
-        
-    Returns:
-        float: 角度（度）
+        symbols: 股票代码列表，默认从行业映射读取
     """
-    if len(ma20_series) < 20:
-        return 0.0
+    if symbols is None:
+        # 从默认股票池读取
+        from app import INDUSTRY_STOCKS
+        symbols = []
+        for stocks in INDUSTRY_STOCKS.values():
+            symbols.extend([s[0] for s in stocks])
+        symbols = list(set(symbols))
     
-    x = np.arange(len(ma20_series))
-    y = ma20_series.values
+    print(f"📊 开始更新 {len(symbols)} 只股票数据...")
     
-    slope = np.cov(x, y)[0, 1] / np.var(x)
-    angle = np.degrees(np.arctan(slope / np.mean(y) * 100))
+    success = 0
+    for sym in symbols:
+        df = get_stock_data_cached(sym, force_refresh=True)
+        if df is not None:
+            success += 1
     
-    return angle
+    print(f"✅ 更新完成: {success}/{len(symbols)}")
 
 
-# ==================== 主程序测试 ====================
+def get_cache_stats() -> Dict:
+    """获取缓存统计信息"""
+    stats = {
+        'total_stocks': 0,
+        'total_size_mb': 0,
+        'oldest_data': None,
+        'newest_data': None,
+        'stocks': []
+    }
+    
+    files = [f for f in os.listdir(DATA_DIR) if f.endswith('.csv')]
+    stats['total_stocks'] = len(files)
+    
+    for f in files:
+        file_path = os.path.join(DATA_DIR, f)
+        size_mb = os.path.getsize(file_path) / 1024 / 1024
+        stats['total_size_mb'] += size_mb
+        
+        try:
+            df = pd.read_csv(file_path, index_col=0, parse_dates=True)
+            symbol = f.replace('.csv', '')
+            first_date = df.index[0].strftime('%Y-%m-%d')
+            last_date = df.index[-1].strftime('%Y-%m-%d')
+            
+            stats['stocks'].append({
+                'symbol': symbol,
+                'rows': len(df),
+                'first_date': first_date,
+                'last_date': last_date,
+                'size_mb': round(size_mb, 2)
+            })
+        except:
+            pass
+    
+    if stats['stocks']:
+        stats['oldest_data'] = min(s['first_date'] for s in stats['stocks'])
+        stats['newest_data'] = max(s['last_date'] for s in stats['stocks'])
+    
+    return stats
+
 
 if __name__ == "__main__":
-    print("=== 数据管理模块测试 ===\n")
+    # 测试
+    print("=" * 50)
+    print("股票数据管理器测试")
+    print("=" * 50)
     
-    # 测试获取股票数据
-    print("1. 获取浦发银行(600000)日线数据...")
-    df = fetch_stock_daily("600000", "2024-01-01", "2025-01-01")
+    # 测试获取数据
+    df = get_stock_data_cached('600519')
     if df is not None:
-        print(f"   获取到 {len(df)} 条数据")
-        print(f"   最新收盘: {df['close'].iloc[-1]:.2f}")
-        print(f"   MA20: {df['MA20'].iloc[-1]:.2f}")
-    else:
-        print("   获取数据失败")
+        print(f"✅ 获取成功: {len(df)}条")
+        print(f"最新: {df.iloc[-1]['close']}")
     
-    # 测试 MA20 角度
-    print("\n2. 计算浦发银行 MA20 角度...")
-    ma20, angle, price = get_stock_ma20_angle("600000")
-    print(f"   MA20: {ma20:.2f}")
-    print(f"   MA20角度: {angle:.2f}°")
-    print(f"   当前价格: {price:.2f}")
-    
-    # 测试实时行情
-    print("\n3. 获取浦发银行实时行情...")
-    realtime = get_realtime_price("600000")
-    if realtime:
-        print(f"   当前价格: {realtime['price']:.2f}")
-        print(f"   涨跌幅: {realtime['change_pct']:+.2f}%")
-    else:
-        print("   获取实时行情失败")
-    
-    print("\n=== 测试完成 ===")
+    # 显示缓存统计
+    print("\n缓存统计:")
+    stats = get_cache_stats()
+    print(f"股票数量: {stats['total_stocks']}")
+    print(f"总大小: {stats['total_size_mb']:.2f}MB")
