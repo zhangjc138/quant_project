@@ -189,9 +189,21 @@ def apply_custom_css():
     
     /* 提示框样式 */
     .stAlert {
-        background-color: #334155;
-        border-color: #475569;
-        color: #f8fafc;
+        background-color: #1e3a5f !important;
+        border-color: #3b82f6 !important;
+        color: #f8fafc !important;
+    }
+    
+    .stAlert p,
+    .stAlert li,
+    .stAlert div {
+        color: #f8fafc !important;
+    }
+    
+    /* markdown 文字 */
+    .stMarkdown p,
+    .stMarkdown li {
+        color: #e2e8f0 !important;
     }
     
     /* 单选按钮文字 */
