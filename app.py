@@ -876,6 +876,13 @@ def show_backtest():
                 st.subheader("📝 交易记录")
                 trades_df = pd.DataFrame(trades)
                 trades_df['date'] = trades_df['date'].dt.strftime('%Y-%m-%d')
+                # 重命名为中文列名
+                trades_df = trades_df.rename(columns={
+                    'date': '日期',
+                    'type': '操作',
+                    'shares': '股数',
+                    'price': '价格'
+                })
                 st.dataframe(trades_df, use_container_width=True, hide_index=True)
         else:
             st.info("👈 设置参数后点击'运行回测'开始分析")
@@ -1178,11 +1185,11 @@ def show_scoring():
                 scores = result.scores
                 
                 m1, m2, m3, m4, m5 = st.columns(5)
-                m1.metric("趋势强度", f"{scores.get('趋势强度', 0):.1f}/25")
-                m2.metric("动量", f"{scores.get('动量', 0):.1f}/25")
-                m3.metric("波动率", f"{scores.get('波动率', 0):.1f}/15")
-                m4.metric("RSI位置", f"{scores.get('RSI位置', 0):.1f}/20")
-                m5.metric("MACD状态", f"{scores.get('MACD状态', 0):.1f}/15")
+                m1.metric("趋势强度", f"{scores.get('趋势强度', 0):.1f}分")
+                m2.metric("动量", f"{scores.get('动量', 0):.1f}分")
+                m3.metric("波动率", f"{scores.get('波动率', 0):.1f}分")
+                m4.metric("RSI位置", f"{scores.get('RSI位置', 0):.1f}分")
+                m5.metric("MACD状态", f"{scores.get('MACD状态', 0):.1f}分")
                 
                 # 雷达图
                 st.subheader("🎯 评分雷达图")
