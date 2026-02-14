@@ -652,17 +652,25 @@ def show_stock_selector():
                 signal_counts = display_df['信号'].value_counts()
                 st.write("📊 信号统计:", signal_counts.to_dict())
                 
-                # 每行显示添加按钮
-                st.subheader("⭐ 一键加自选")
+                # 选股结果明细（带添加按钮）
+                st.subheader("⭐ 操作")
                 for r in results:
-                    col_info, col_btn = st.columns([4, 1])
-                    with col_info:
-                        signal_emoji = "🔴" if "卖出" in r['信号'] else "🟡" if "持有" in r['信号'] else "🟢"
-                        st.write(f"{signal_emoji} **{r['代码']}** {r['名称']} - 评分:{r['评分']} - {r['信号']}")
-                    with col_btn:
-                        if st.button(f"➕ 加自选", key=f"add_{r['代码']}"):
+                    c1, c2, c3, c4, c5, c6 = st.columns([1, 2, 1, 1, 1, 1])
+                    signal_emoji = "🔴" if "卖出" in r['信号'] else "🟡" if "持有" in r['信号'] else "🟢"
+                    with c1:
+                        st.write(f"**{r['代码']}**")
+                    with c2:
+                        st.write(r['名称'])
+                    with c3:
+                        st.write(f"评分:{r['评分']}")
+                    with c4:
+                        st.write(f"MA20:{r['MA20角度']:.1f}°")
+                    with c5:
+                        st.write(f"{signal_emoji} {r['信号']}")
+                    with c6:
+                        if st.button(f"➕ 自选", key=f"add_{r['代码']}_{r['名称']}"):
                             add_to_watchlist(r['代码'], r['名称'])
-                            st.toast(f"✅ 已添加 {r['代码']} {r['名称']}")
+                            st.toast(f"✅ 已添加 {r['代码']}")
 
 
 def show_backtest():
