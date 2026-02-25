@@ -1,0 +1,140 @@
+name: Daily Update Automation
+
+on:
+  schedule:
+    # 每天早上8点自动更新 (UTC时间00:00 = 北京时间8:00)
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+  # 手动触发
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Update timestamp and docs
+        run: |
+          python -c "
+          import datetime
+          from pathlib import Path
+          
+          # 更新README中的时间戳
+          readme_path = Path('README.md')
+          if readme_path.exists():
+              content = readme_path.read_text(encoding='utf-8')
+              now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+              
+              # 更新Last Commit徽章
+              old_badge = '![Last Commit]'
+              new_badge = f'![Last Commit](https://img.shields.io/github/last-commit/zhangjc138/quant_project?style=flat-square) **Last updated: {now}**'
+              
+              if old_badge in content:
+                  content = content.replace(
+                      '![Last Commit](https://img.shields.io/github/last-commit/zhangjc138/quant_project?style=flat-square)',
+                      f'![Last Commit](https://img.shields.io/github/last-commit/zhangjc138/quant_project?style=flat-square) **Updated: {now}**'
+                  )
+                  readme_path.write_text(content, encoding='utf-8')
+                  print(f'✅ Updated README timestamp: {now}')
+              else:
+                  print('⚠️ Last Commit badge not found')
+          "
+          
+      - name: Add small improvements
+        run: |
+          # 检查是否有typo需要修复
+          echo "🔧 Performing minor improvements..."
+          
+          # 更新requirements.txt中的版本注释（如果需要）
+          requirements = Path('requirements.txt')
+          if requirements.exists():
+              content = requirements.read_text(encoding='utf-8')
+              if '# Updated:' not in content:
+                  from datetime import datetime
+                  content = f"# Updated: {datetime.now().strftime('%Y-%m-%d')}\n" + content
+                  requirements.write_text(content, encoding='utf-8')
+                  print("✅ Updated requirements.txt")
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 检查是否有变更
+          if git diff --quiet:
+            echo "📝 No changes to commit, adding a minor update..."
+            
+            # 添加一个小更新到README末尾
+            from datetime import datetime
+            now = datetime.now().strftime('%Y-%m-%d %H:%M')
+            
+            readme_path = Path('README.md')
+            if readme_path.exists():
+                content = readme_path.read_text(encoding='utf-8')
+                update_note = f"\n---\n### 📅 自动更新 ({now})\n- 项目保持活跃更新\n"
+                content += update_note
+                readme_path.write_text(content, encoding='utf-8')
+                print("✅ Added update note to README")
+                
+                git add README.md
+                git commit -m "🤖 Auto-update: $(date +'%Y-%m-%d %H:%M') - Minor improvements" || echo "Nothing to commit"
+          else
+            git add -A
+            git commit -m "🤖 Auto-update: $(date +'%Y-%m-%d %H:%M') - Daily improvements" || echo "Nothing to commit"
+          fi
+
+      - name: Push changes
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
+        continue-on-error: true
+
+      - name: Run trending check
+        run: |
+          echo "📊 Running trending check..."
+          python -c "
+          import requests
+          import json
+          from datetime import datetime
+          
+          # 获取项目信息
+          repo = 'zhangjc138/quant_project'
+          api_url = f'https://api.github.com/repos/{repo}'
+          
+          try:
+              response = requests.get(api_url, timeout=10)
+              data = response.json()
+              
+              stars = data.get('stargazers_count', 0)
+              forks = data.get('forks_count', 0)
+              watchers = data.get('watchers_count', 0)
+              
+              print(f\"📈 Stars: {stars}\")
+              print(f\"🍴 Forks: {forks}\")
+              print(f\"👁️ Watchers: {watchers}\")
+              
+              # 检查是否在Trending
+              trending_url = f'https://api.github.com/search/repositories?q={repo}&sort=stars'
+              trending_resp = requests.get(trending_url, timeout=10)
+              
+              if trending_resp.status_code == 200:
+                  items = trending_resp.json().get('items', [])
+                  for i, item in enumerate(items, 1):
+                      if item.get('full_name') == repo:
+                          print(f\"🎉 项目在GitHub Trending排名第 {i} 位！\")
+                          break
+                  else:
+                      print(\"📊 暂未进入全站Trending，持续努力中...\")
+              
+          except Exception as e:
+              print(f\"⚠️ Error: {e}\")
+          "

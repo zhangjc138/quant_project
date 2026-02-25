@@ -1,0 +1,182 @@
+# quant_project 配置文件模板
+# 复制此文件为 config.yaml 并填入实际配置
+
+# ==================== 邮件推送配置 ====================
+email:
+  # SMTP 服务器地址
+  smtp_host: "smtp.qq.com"
+  
+  # SMTP 端口 (465 for SSL, 587 for TLS)
+  smtp_port: 465
+  
+  # 邮箱用户名 (完整邮箱地址)
+  username: "6315489@qq.com"
+  
+  # 邮箱密码/授权码
+  # QQ邮箱: 需要在邮箱设置中开启SMTP服务，获取授权码
+  # 其他邮箱: 使用邮箱密码或App专用密码
+  password: "your_email_password_or_app_token"
+  
+  # 收件人列表 (多个邮箱用逗号分隔)
+  recipients:
+    - "6315489@qq.com"
+    - "user@example.com"
+  
+  # 发件人显示名称
+  sender_name: "Quant Signals"
+
+# ==================== 飞书Webhook配置 ====================
+feishu:
+  # 飞书群机器人Webhook地址
+  # 获取方式: 
+  # 1. 打开飞书群聊
+  # 2. 点击群设置 -> 群机器人
+  # 3. 添加机器人 -> 自定义机器人
+  # 4. 复制Webhook地址
+  webhook_url: "https://open.feishu.cn/open-apis/bot/v2/your-webhook-id"
+  
+  # @提醒的用户 (可选，填入用户的open_id)
+  # 在飞书后台可以获取用户的open_id
+  mention_users:
+    - "ou_xxxxxxxxxxxxx"
+
+# ==================== 微信推送配置 ====================
+wechat:
+  # 推送方式: serverchan (Server酱) 或 coolpush (酷推)
+  method: "serverchan"
+  
+  # Server酱配置:
+  # 1. 访问 https://sc.ftqq.com/ 注册账号
+  # 2. 点击"发送消息"获取 SCKEY
+  # 3. 将 SCKEY 填入下方 key
+  key: "your_serverchan_sckey"
+  
+  # 酷推配置 (可选，使用酷推时填入):
+  # 1. 访问 https://push.xuthus.cc/ 注册账号
+  # 2. 创建机器人获取 Skey
+  # 3. 如需指定发送账号，填入 send_key
+  # send_key: "your_coolpush_skey"
+
+# ==================== 推送频率限制 ====================
+rate_limit:
+  # 每分钟最大推送数
+  max_per_minute: 3
+  
+  # 每小时最大推送数
+  max_per_hour: 20
+  
+  # 同股票同信号冷却时间（秒）
+  # 避免同一天内对同一股票发送重复推送
+  cooldown_seconds: 300
+
+# ==================== 选股参数配置 ====================
+scan:
+  # 买入角度阈值 (度)
+  angle_threshold_buy: 3.0
+  
+  # 卖出角度阈值 (度)
+  angle_threshold_sell: 0.0
+  
+  # RSI 超卖阈值
+  rsi_oversold: 30
+  
+  # RSI 超买阈值
+  rsi_overbought: 70
+  
+  # 买入是否要求 RSI 超卖
+  require_rsi_oversold: true
+  
+  # 买入是否要求 MACD 金叉
+  require_macd_golden: true
+
+# ==================== 股票池配置 ====================
+watchlist:
+  enabled: true
+  # 股票列表 (代码: {名称, 类别, 是否启用})
+  stocks:
+    "600000": 
+      name: "浦发银行"
+      category: "银行"
+      enabled: true
+    "600036": 
+      name: "招商银行"
+      category: "银行"
+      enabled: true
+    "600016": 
+      name: "民生银行"
+      category: "银行"
+      enabled: true
+    "600015": 
+      name: "华夏银行"
+      category: "银行"
+      enabled: true
+    "600030": 
+      name: "中信证券"
+      category: "证券"
+      enabled: true
+    "600012": 
+      name: "皖通高速"
+      category: "高速"
+      enabled: true
+    "600033": 
+      name: "福建高速"
+      category: "高速"
+      enabled: true
+    "600035": 
+      name: "宁沪高速"
+      category: "高速"
+      enabled: true
+    "600009": 
+      name: "上海机场"
+      category: "机场"
+      enabled: true
+    "600085": 
+      name: "同仁堂"
+      category: "医药"
+      enabled: true
+    "600352": 
+      name: "山东黄金"
+      category: "黄金"
+      enabled: true
+
+# ==================== 数据源配置 ====================
+data:
+  # 数据源: "local" 或 "akshare"
+  source: "akshare"
+  
+  # 本地数据目录 (可选)
+  local_path: "./data"
+  
+  # 缓存目录
+  cache_path: "./cache"
+
+# ==================== 日志配置 ====================
+logging:
+  # 日志级别: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  
+  # 日志文件
+  file: "./logs/daily_signal.log"
+  
+  # 控制台输出
+  console: true
+
+# ==================== 使用说明 ====================
+"""
+配置步骤:
+
+1. 邮件配置:
+   - QQ邮箱: 设置 -> 账户 -> 开启SMTP服务 -> 生成授权码
+   - 其他邮箱: 在邮箱设置中启用SMTP服务
+   
+2. 飞书配置:
+   - 打开飞书群聊
+   - 点击群设置 -> 群机器人
+   - 添加自定义机器人
+   - 复制Webhook地址到配置中
+
+3. 使用:
+   - 将此文件复制为 config.yaml
+   - 填入实际配置
+   - 运行: python daily_signal.py --config config.yaml
+"""
